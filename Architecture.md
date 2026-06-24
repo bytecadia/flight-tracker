@@ -108,7 +108,8 @@ Main (Thread 2).                            -->  Enrich Queue  -->  Enrich (Thre
     - parse msg, update plane               <--  Result Queue         - enrich aircraft object               
     - if new plane push to enrich queue                               - push to queue
 
-    On every 30 sec:
+Maintenance (Thread 4):
+    Every 30 seconds:
     - Update planes with result queue
     - Clean stale planes
     - Select plane
@@ -116,10 +117,9 @@ Main (Thread 2).                            -->  Enrich Queue  -->  Enrich (Thre
 
 Snapshot
 
-Renderer (Thread 4)
+Renderer (Thread 5)
     - Builds canvas
     - Draws to matrix
-
 ```
 
 ## 1: Read ADSB Messages from Socket
@@ -240,7 +240,6 @@ while (true)
 ## 2: Main Aircraft Processing
 
 Classes:
-
 ``` C++
 class Aircraft {
     public:
@@ -284,42 +283,54 @@ class Aircraft {
     // Constructor that takes in just the IACO and defaults the other fields
 
     // Method to update fields from on msg string
-    // Method to determine distance based on location
+    // Method to enrich from enrich json
 };
-
 ```
 
-``` c++
-class AircraftRegistry {
-  public:
-    std::unordered_map<std::string, Aircraft> aircrafts;
+## Main (Thread 2):
+``` psuedo
+lastUpdate
+while true:
+    msg = parse(messageQueue.pop())
+    aircraft = aircrafts.find(msg.iaco)
 
+    if (!aircraft)
+        new = Aircraft(msg)
+        aircraft.update(msg)
+        aircrafts.add(new)
+        enrichQueue.push([new.iaco, new.callsign])
+        continue
 
-    // Method to look up by IACO
-    // Method to select aircraft
-    // Method to add/remove aircraft
-    // Method to remove stale aircraft
-}
+    aircraft.update(msg)
 ```
-Main while loop:
-    pop message from queue
-    update plane
-    if new plane push to enrich queue 
 
+## Maintenance (Thread 4)
+``` psuedo
+    if time.now - lastUpdate >= 30:
 
-    On every 30 sec:
-      - Update planes with result queue
-      - Clean stale planes
-      - Select plane
-      - Write to snapshot
-      
-Enrich:
+        // Update planes with result queue
+        for response in responses:
+            aircraft = aircrafts.find(response.iaco)
+            aircraft.enrich(response)
+            
+        // Clean stale planes
+        for aircraft in aircrafts:
+            if time.now - aircraft.lastSeen >= 60:
+                aircrafts.remove(aircraft.iaco)
+    
+        feature = select(aircrafts)
+        snapshot.write(feature)
+```
+
+## Enrich (Thread 3)
+
+Source: [adsbd.com]("https://www.adsbdb.com/")
 
 API Call: `https://api.adsbdb.com/v0/aircraft/{ MODE_S || REGISTRATION }?callsign={ CALLSIGN_ICAO || CALLSIGN_ICAO }`
 - MODE_S = icao
 - CALLSIGN_ICAO = callsign
 
-Response:
+Response (Relevant fields only):
 ```
 {
     "response": {
@@ -327,42 +338,45 @@ Response:
             "manufacturer": "Cirrus", // Needed for non-commercial UI only
         },
         "flightroute": {
-            "callsign": "RYR1054",
-            "callsign_icao": "RYR1054",
             "callsign_iata": "FR1054",
             "airline": {
-                "name": "Ryanair",
-                "icao": "RYR",
-                "iata": "FR",
-                "country": "Ireland",
-                "country_iso": "IE",
-                "callsign": "RYANAIR"
+                "name": "Ryanair"
             },
-            "origin": {
-                "country_iso_name": "GB",
-                "country_name": "United Kingdom",
-                "elevation": 135,
+
+            // Might use lat/lon for path UI
+            "origin": { 
                 "iata_code": "EDI",
-                "icao_code": "EGPH",
-                "latitude": 55.950145,
+                "latitude": 55.950145, 
                 "longitude": -3.372288,
-                "municipality": "Edinburgh",
-                "name": "Edinburgh Airport"
             },
             "destination": {
-                "country_iso_name": "CZ",
-                "country_name": "Czech Republic",
-                "elevation": 1247,
                 "iata_code": "PRG",
-                "icao_code": "LKPR",
                 "latitude": 50.1008,
                 "longitude": 14.26,
-                "municipality": "Prague",
-                "name": "Václav Havel Airport Prague"
             }
         }
     }
 }
 ```
 
+Psuedo:
+``` psuedo
+base = "https://api.adsbdb.com/v0/aircraft/"
+while true:
+    req = enrichQueue.pop()
+    url = base + req(0) + "?callsign=" + req(1)
+    response = get(url)
+    json = parse(response.text)
+    resultQueue.push(json)
+```
+
+## Renderer (Thread 5)
+
+``` Psuedo
+// setup canvas
+
+while true:
+    plane = snapshot.read()
+    canvas.drawPlane(plane)
+```
 
