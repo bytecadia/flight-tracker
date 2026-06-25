@@ -239,10 +239,9 @@ while (true)
 
 ## 2: Main Aircraft Processing
 
-Classes:
+Aircraft Stuct:
 ``` C++
-class Aircraft {
-    public:
+struct Aircraft {
     enum class Operation {
         com,
         non,
@@ -287,7 +286,7 @@ class Aircraft {
 };
 ```
 
-## Main (Thread 2):
+Main Psudeo Code:
 ``` psuedo
 lastUpdate
 while true:
@@ -304,7 +303,9 @@ while true:
     aircraft.update(msg)
 ```
 
-## Maintenance (Thread 4)
+## 3: Maintenance
+
+Psuedo Code:
 ``` psuedo
     if time.now - lastUpdate >= 30:
 
@@ -322,7 +323,7 @@ while true:
         snapshot.write(feature)
 ```
 
-## Enrich (Thread 3)
+## 4: Enriching
 
 Source: [adsbd.com]("https://www.adsbdb.com/")
 
@@ -359,7 +360,7 @@ Response (Relevant fields only):
 }
 ```
 
-Psuedo:
+Psuedo Code:
 ``` psuedo
 base = "https://api.adsbdb.com/v0/aircraft/"
 while true:
@@ -372,6 +373,105 @@ while true:
 
 ## Renderer (Thread 5)
 
+Classes:
+```
+// Likely needed, highly intuitive
+class Rect {
+    public:
+        int x;
+        int y;
+        int h;
+        int w;
+
+        Rect(int x, int y, int h, int w):
+            x(x), y(y), h(h), w(w) {}
+
+        void inset(int padding){
+            x += padding;
+            y += padding;
+            h -= padding * 2;
+            w -= padding * 2;
+        }
+};
+```
+``` c++
+// Needed to hold state of text objects
+class Element {
+    public:
+        const std::string text;
+        const Font font;
+        const Color color;
+        const int w; // Maybe
+
+        bool stale;
+
+        Element(std::string t, Font f, Color c):
+            // Will mesaure return same as DrawText
+            text(t), font(f), color(c) w(rgb_matrix::MeasureText(f,t,0)){
+                stale = false;
+        }
+};
+```
+
+Functions:
+```c++
+void draw_row(Canvas *c, int x, int y, vector<Element> element_list, int space) {
+    for (const Element& el : element_list):
+        if (x + el.w <= c.width()) {// Not sure if use canvas or rect
+            x += rgb_matrix::DrawText(c, el.font, x, y el.color, el.text);
+            x += space;
+        }
+}
+```
+
+``` c++
+// In bdf-font.cc
+int Font::DrawGlyph(Canvas *c, int x_pos, int y_pos,
+                    const Color &color, const Color *bgcolor,
+                    uint32_t unicode_codepoint,
+                    int l_clip, int r_clip) const {
+  const Glyph *g = FindGlyph(unicode_codepoint);
+  if (g == NULL) g = FindGlyph(kUnicodeReplacementCodepoint);
+  if (g == NULL) return 0;
+  y_pos = y_pos - g->height - g->y_offset;
+
+  if (x_pos + g->device_width < 0 || x_pos > c->width() ||
+      y_pos + g->height < 0 || y_pos > c->height() ||
+      x_pos + g->device_width <= l_clip || x_pos >= r_clip) {
+    return g->device_width;
+  }
+
+  for (int y = 0; y < g->height; ++y) {
+    const rowbitmap_t& row = g->bitmap[y];
+    for (int x = 0; x < g->device_width; ++x) {
+      const int sx = x_pos + x;
+      if (sx < l_clip || sx >= r_clip)
+        continue;
+      if (row.test(kMaxFontWidth - 1 - x)) {
+        c->SetPixel(sx, y_pos + y, color.r, color.g, color.b);
+      } else if (bgcolor) {
+        c->SetPixel(sx, y_pos + y, bgcolor->r, bgcolor->g, bgcolor->b);
+      }
+    }
+  }
+  return g->device_width;
+}
+
+int DrawText(Canvas *c, const Font &font,
+             int x, int y, const Color &color, const Color *background_color,
+             const char *utf8_text, int extra_spacing,
+             int l_clip = INT_MIN, int r_clip = INT_MAX) {
+  const int start_x = x;
+  while (*utf8_text) {
+    const uint32_t cp = utf8_next_codepoint(utf8_text);
+    x += font.DrawGlyph(c, x, y, color, background_color, cp, l_clip, r_clip);
+    x += extra_spacing;
+  }
+  return x - start_x;
+}
+```
+Add scroll logic
+
 ``` Psuedo
 // setup canvas
 
@@ -379,4 +479,6 @@ while true:
     plane = snapshot.read()
     canvas.drawPlane(plane)
 ```
+
+
 
