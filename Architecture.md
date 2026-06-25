@@ -1,14 +1,15 @@
-FlightWall Layout
+# FlightWall Layout
 
-![Alt text](assets/commercial.png) 
-![Alt text](assets/noncommercial.png) 
-
+### UI Mockups
+**Commercial**
+![Commercial](assets/commercial.png)
+**Non-Commercial**
+![Non-Commercial](assets/noncommercial.png) 
 
 
 ## Intro 1: Thread safety
 
 ### Thread Safe Snapshot
-
 
 ``` C++
 class Snapshot {
@@ -371,7 +372,7 @@ while true:
     resultQueue.push(json)
 ```
 
-## Renderer (Thread 5)
+## 5: Renderer
 
 Classes:
 ```
@@ -415,6 +416,7 @@ class Element {
 
 Functions:
 ```c++
+// TODO: Need to consider when to not redrawn data that is not stale
 void draw_row(Canvas *c, int x, int y, vector<Element> element_list, int space) {
     for (const Element& el : element_list):
         if (x + el.w <= c.width()) {// Not sure if use canvas or rect
@@ -425,7 +427,14 @@ void draw_row(Canvas *c, int x, int y, vector<Element> element_list, int space) 
 ```
 
 ``` c++
+// Scrolling logic
+```
+
+Hzeller Library Edit:
+``` c++
 // In bdf-font.cc
+
+// Skip drawing pixels outside of clip bounds
 int Font::DrawGlyph(Canvas *c, int x_pos, int y_pos,
                     const Color &color, const Color *bgcolor,
                     uint32_t unicode_codepoint,
@@ -457,6 +466,7 @@ int Font::DrawGlyph(Canvas *c, int x_pos, int y_pos,
   return g->device_width;
 }
 
+// Pass down clip parameters
 int DrawText(Canvas *c, const Font &font,
              int x, int y, const Color &color, const Color *background_color,
              const char *utf8_text, int extra_spacing,
@@ -470,8 +480,8 @@ int DrawText(Canvas *c, const Font &font,
   return x - start_x;
 }
 ```
-Add scroll logic
 
+Main:
 ``` Psuedo
 // setup canvas
 
