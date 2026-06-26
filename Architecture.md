@@ -420,14 +420,26 @@ Functions:
 void draw_row(Canvas *c, int x, int y, vector<Element> element_list, int space) {
     for (const Element& el : element_list):
         if (x + el.w <= c.width()) {// Not sure if use canvas or rect
-            x += rgb_matrix::DrawText(c, el.font, x, y el.color, el.text);
+            x += rgb_matrix::DrawText(c, el.font, x, y, el.color, el.text);
             x += space;
         }
 }
-```
 
-``` c++
-// Scrolling logic
+// Used for scrolling text
+void wrap_text(Canvas *c, int x, int y, const Element& el, int space, int l_clip, int r_clip) {
+    int tw = rgb_matrix::DrawText(c, el.font, x, y, el.color, el.text.c_str(), l_clip, r_clip); // TODO: DrawText call needs fix
+    int extra = tw + x - r_clip
+
+    if (extra > 0) {
+        int offset = tw - extra
+        int new_clip = x - space - extra
+
+        if (new_clip > l_clip)
+            rgb_matrix::DrawText(c, el.font, l_clip - offset , y, el.color, el.text, l_clip, r_clip);
+        else
+            rgb_matrix::DrawText(c, el.font, new_clip - offset , y, el.color, el.text, l_clip, r_clip);
+    }
+}
 ```
 
 Hzeller Library Edit:
