@@ -270,6 +270,7 @@ struct Aircraft {
     bool isOnGround;
 
     // API Data - Optional
+    bool has_logo;
     const std::string airline;
     const std::string flightNo;
     const std::string typeCode;
@@ -369,13 +370,134 @@ while true:
     url = base + req(0) + "?callsign=" + req(1)
     response = get(url)
     json = parse(response.text)
+    // Add logic to retrieve logo
     resultQueue.push(json)
 ```
 
 ## 5: Renderer
 
-Classes:
+High Level:
+
+I created the concept of an element as another layer of abstraction on top of text. The reason was to be able to apply fiting rules to associated text ( In fit mode A telemetry value cannot be draw without its unit). These fitting rules are apply at the caller level.
+
+### Model to UI:
+
+``` c++
+
+const rgb_matrix::Color RED(227, 36, 0);
+const rgb_matrix::Color LIGHT_RED(255, 140, 130);
+const rgb_matrix::Color ORANGE(217, 80, 0);
+const rgb_matrix::Color YELLOW(255, 251, 185);
+const rgb_matrix::Color LIGHT_YELLOW(254, 252, 221);
+const rgb_matrix::Color GREEN(119, 187, 65);
+const rgb_matrix::Color BLUE(116, 167, 254);
+const rgb_matrix::Color LIGHT_BLUE(212, 227, 254);
+
+const rgb_matrix::Color WHITE(235, 235, 235);
+const rgb_matrix::Color GREY(214, 214, 214);
+const rgb_matrix::Color BEIGE(255, 242, 213);
+
+
+struct Row {
+    std::vector<Element> elements;
+    int space;
+    Mode mode;
+}
+
+struct Element {
+    vector<Text> items;
+    int space;
+    Mode mode;
+};
+
+struct Text {
+    const std::string value;
+    const Font& font;
+    const Color& color;
+}
+
+enum class Mode {
+    clip,
+    fit,
+    scroll
+};
+
+struct AircraftDisplay {
+    magick::image logo;
+    std::vector<Row> rows;
+
+    AircraftDisplay(const Aircraft& a, const Theme& t,
+                    const Font sml, const Font med, const Font lrg) {
+        
+        switch (t) {
+            case Theme::Com:
+                rows.push_back(Row{{Element{Mode::Scroll, 0, {Text{a.airline, lrg, RED}}}}, 0});
+                rows.push_back(Row{{Element{Mode::Fit, 0, {Text{a.flt_no, sml, LIGHT_RED}}},
+                                    Element{Mode::Fit, 0, {Text{"·", sml, GREY},
+                                                              Text{a.typ_code, sml, LIGHT_RED}}}}, 2});
+                break;
+
+            case Theme::Non:
+                rows.push_back(Row{{Element{Mode::Scroll, 0, {Text{a.callsign, lrg, RED}}}}, 0});
+                rows.push_back(Row{{Element{Mode::Fit, 0, {Text{a.flt_no, sml, LIGHT_RED}}}}, 0});
+                break;
+        }
+
+        rows.push_back(Row{{Element{Mode::Fit, 2, {Text{a.speed, sml, BLUE},
+                                                      Text{"mph", sml, LIGHT_BLUE}}},
+                            Element{Mode::Fit, 2, {Text{a.alt, sml, BLUE},
+                                                      Text{"ft", sml, LIGHT_BLUE}}}}, 2});
+        
+        switch (t) {
+            case Theme::Com:
+                rows.push_back(Row{{Element{Mode::Fit, 0, {Text{a.orgn, med, LIGHT_RED}}},
+                                    Element{Mode::Fit, 0, {Text{"→", med, BEIGE}}},
+                                    Element{Mode::Fit, 0, {Text{a.dest, med, GREEN}}}}, 2});
+                break;
+            case Theme::Non:
+                rows.push_back(Row{{Element{Mode::Fit, 2, {Text{a.dist, med, YELLOW},
+                                                              Text{"mi", sml, LIGHT_YELLOW}}},
+                                    Element{Mode::Fit, 0, {Text{a.brg, med, YELLOW}}},
+                                    Element{Mode::Fit, 2, {Text{"-", med, YELLOW},
+                                                              Text{a.trk, med, YELLOW},
+                                                              Text{"°", sml, LIGHT_YELLOW}}}}, 2});
+                break;
+        }
+    }
+}
+
+struct positions {
+    Text text;
+    int x;
+    int y;
+    int l;
+    int r;
+}
+
+std::vector<positions> layout(const AircraftDisplay& display, int64_t time){
+    int scroll = (time / 1000) % ; // 1px per sec
+    std::vector<Position> pos;
+    for (int j = 0; j < display.rows[1].size(); i++){
+        if 
+    }
+}
+
+std::vector<positions> lay_row(int x, int y, std::vector<Element> items){
+    std::vector<Positions> row_pos;
+
+    for (const Element item& : items){
+        int size = msr_element(item)
+        row_pos.push_back({item.value, })
+    }
+}
 ```
+
+LEFT OFF:
+Left at bad spot but I am in the middel of trying to figure out how to use the calculate layout layer such that the only thing needed to do when rendering pixels is to loop over a bunch of position structs which have the bare minimum to render. Scrolling illusion is accomplished by have two positions for one piece of text. The clips render the text such that the illusion of a scroll is acheived by the calling funtion through controlling the offset. So far I am happy with the Aircraft display that it translates the data of the airplane to a description of the UI. Consider the fact that the image will not be apart of the placements struct. That's apparently ok. 
+
+### UI Layer:
+Classes:
+``` c++
 // Likely needed, highly intuitive
 class Rect {
     public:
@@ -396,50 +518,64 @@ class Rect {
 };
 ```
 ``` c++
-// Needed to hold state of text objects
-class Element {
-    public:
-        const std::string text;
-        const Font font;
-        const Color color;
-        const int w; // Maybe
-
-        bool stale;
-
-        Element(std::string t, Font f, Color c):
-            // Will mesaure return same as DrawText
-            text(t), font(f), color(c) w(rgb_matrix::MeasureText(f,t,0)){
-                stale = false;
-        }
-};
 ```
 
 Functions:
 ```c++
-// TODO: Need to consider when to not redrawn data that is not stale
-void draw_row(Canvas *c, int x, int y, vector<Element> element_list, int space) {
-    for (const Element& el : element_list):
-        if (x + el.w <= c.width()) {// Not sure if use canvas or rect
-            x += rgb_matrix::DrawText(c, el.font, x, y, el.color, el.text);
-            x += space;
+
+int msr_element(const std::Element el) {
+    int w = 0;
+
+    for (size_t i = 0; i < el.items.size(); i++) {
+        const Text& item = el.items[i];
+        w += MeasureText(item.font, item.value, 0);
+
+        if (i + 1 < el.items.size()) {
+            w += el.space;
         }
-}
-
-// Used for scrolling text
-void wrap_text(Canvas *c, int x, int y, const Element& el, int space, int l_clip, int r_clip) {
-    int tw = rgb_matrix::DrawText(c, el.font, x, y, el.color, el.text.c_str(), l_clip, r_clip); // TODO: DrawText call needs fix
-    int extra = tw + x - r_clip
-
-    if (extra > 0) {
-        int offset = tw - extra
-        int new_clip = x - space - extra
-
-        if (new_clip > l_clip)
-            rgb_matrix::DrawText(c, el.font, l_clip - offset , y, el.color, el.text, l_clip, r_clip);
-        else
-            rgb_matrix::DrawText(c, el.font, new_clip - offset , y, el.color, el.text, l_clip, r_clip);
     }
+
+    return w;
 }
+
+int msr_scroll(Canvas *c, int x, int y, const Element& el, int space, int l, int r) {
+    int w = msr_element(el.items, el.space);
+    int overflow = w + x - r
+
+    if (overflow > 0) {
+        int offset = w - overflow
+        int new_clip = x - space - overflow
+
+        if (new_clip > l)
+            return l - offset;
+        else
+            return new_clip - offset;
+    }
+    return -1;
+}
+
+// From image-example.cc
+void draw_image(Canvas *c, int x, int y, const Magick::Image &image) {
+    for (size_t y = 0; y < image.rows(); ++y) {
+    for (size_t x = 0; x < image.columns(); ++x) {
+      const Magick::Color &c = image.pixelColor(x, y);
+      if (c.alphaQuantum() < 256) {
+        canvas->SetPixel(x + offset_x, y + offset_y,
+                         ScaleQuantumToChar(c.redQuantum()),
+                         ScaleQuantumToChar(c.greenQuantum()),
+                         ScaleQuantumToChar(c.blueQuantum()));
+      }
+    }
+  }
+}
+
+static Magick::Image load_image(const std::string& path){
+    Magick::Image image(path);
+    image.scale(Magick::Geometry("x14")); // Scale height to 14px, auto width
+    return image;
+}
+// Used for scrolling text
+
 ```
 
 Hzeller Library Edit:
@@ -497,9 +633,13 @@ Main:
 ``` Psuedo
 // setup canvas
 
+last;
 while true:
     plane = snapshot.read()
-    canvas.drawPlane(plane)
+
+    if (last.iaco == plane.iaco) {
+
+    }
 ```
 
 
