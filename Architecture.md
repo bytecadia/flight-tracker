@@ -425,6 +425,7 @@ enum class Mode {
 struct AircraftDisplay {
     magick::image logo;
     std::vector<Row> rows;
+    Rect content;
 
     AircraftDisplay(const Aircraft& a, const Theme& t,
                     const Font sml, const Font med, const Font lrg) {
@@ -466,7 +467,7 @@ struct AircraftDisplay {
     }
 }
 
-struct positions {
+struct Position {
     Text text;
     int x;
     int y;
@@ -474,26 +475,118 @@ struct positions {
     int r;
 }
 
-std::vector<positions> layout(const AircraftDisplay& display, int64_t time){
-    int scroll = (time / 1000) % ; // 1px per sec
-    std::vector<Position> pos;
-    for (int j = 0; j < display.rows[1].size(); i++){
-        if 
+std::vector<positions> layout(const AircraftDisplay& disp, int64_t time){
+    const int y1 = disp.logo.rows(); // Anchor to bottom line of logo
+    const int y2 = y1 + disp.rows[2].h + disp.row_gap;
+    const int y4 = disp.content.btm(); // Anchor to bottom of frame
+    const int y3 = y4 + disp.rows[4].h + disp.row_gap; 
+
+    int x = disp.frame.left();
+    const int x1 = (1 <= disp.logo_span) ? x + img : x;
+    const int x2 = (2 <= disp.logo_span) ? x + img : x;
+    const int x3 = (3 <= disp.logo_span) ? x + img : x;
+    const int x4 = (4 <= disp.logo_span) ? x + img : x;
+
+    vector<positions> pos;
+    pos.push_back(lay_row(disp.rows[1], x1, y1));
+    pos.push_back(lay_row(disp.rows[2], x2, y2));
+    pos.push_back(lay_row(disp.rows[3], x3, y3));
+    pos.push_back(lay_row(disp.rows[4], x4, y4));
+
+    return pos;
+}
+
+std::vector<positions> lay_row(int x, int y, int r,
+                               Row row, 
+                               std::optional<int64_t> time){
+    std::vector<Positions> pos;
+    int start = x;
+
+    for (size_t i = 0; i < row.elements.size(); i++){
+        int w;=
+        elmnt = row.elements[i];
+        std::vector<Postion> np = lay_elmnt(x, y, &w, row.gap, elmnt);
+
+        if (x + w  > r) {
+            switch (row.mode) {
+                case Mode::Fit:
+                    return pos;
+                
+                case Mode::clip;
+                    pos.push_back(np);
+                    return pos;
+
+                case Mode::scroll;
+                    std::vector<Element> rest(row.elements.begin() + i, row.elements.end());
+                    pos.push_back(np);
+                    x = scroll_placement(start, x, Row{rest, row.gap, row.mode});
+                    pos.push_back(lay_elmnt(x, y, &w, row.gap, elmnt));
+                    x += w;
+                    continue;
+            }
+        }
+
+        pos.push_back(np);
+        x += w;
     }
 }
 
-std::vector<positions> lay_row(int x, int y, std::vector<Element> items){
-    std::vector<Positions> row_pos;
+int scrl_plcmnt(int start, int l, int r, int scrl_gap, int64_t time, Row rest) { // TODO: What to do with time
+    int width = msr_row(rest);
+    int leftover = start + width - r;
+    int offset = width - leftover;
+    int closest = start - width - scrl_gap;
 
-    for (const Element item& : items){
-        int size = msr_element(item)
-        row_pos.push_back({item.value, })
-    }
+    if ( l < closest)
+        return l - offset;
+    
+    return closest - offset;
 }
+
+int msr_row(Row row) {
+    int w = 0;
+    for (size_t i = 0; i < row.elements.size(); i++){
+        Element elmnt = rest[i];
+        w += msr_elmnt(elmnt, row.gap);
+
+        if (i < row.elements.size() - 1)
+            w += row.gap;
+    }
+    return w;
+}
+
+int msr_elmnt(Element elmnt){
+    int w = 0;
+    for (size_t i = 0; i < elmnt.items.size(); i++>) {
+        Text itm = elmnt.items[i]
+        w += MeasureText(itm.value, itm.font);
+
+        if (i < elmnt.items.size() - 1)
+            w += elmnt.gap;
+    }
+    return w;
+}
+// TODO: make robust and type, qualifier decsions
+
+
+std::vector<Position> lay_elmnt(int x, int y, int& w,  int gap,
+                                 Element& elmnt) {
+    int start = x;
+    std::vector<Position> pos
+    for (size_t i = 0; i < elmnt.items.size(); i++) {
+        Text itm = elmnt.items[i];
+        Position np{itm, x, y};
+    
+        x += MeasureText(itm.value, itm.font);
+        if (i < elmnt.items.size() - 1)
+            x += gap;
+
+        pos.push_back(np);
+    }
+    w = x - start;
+}
+
 ```
-
-LEFT OFF:
-Left at bad spot but I am in the middel of trying to figure out how to use the calculate layout layer such that the only thing needed to do when rendering pixels is to loop over a bunch of position structs which have the bare minimum to render. Scrolling illusion is accomplished by have two positions for one piece of text. The clips render the text such that the illusion of a scroll is acheived by the calling funtion through controlling the offset. So far I am happy with the Aircraft display that it translates the data of the airplane to a description of the UI. Consider the fact that the image will not be apart of the placements struct. That's apparently ok. 
 
 ### UI Layer:
 Classes:
@@ -515,45 +608,15 @@ class Rect {
             h -= padding * 2;
             w -= padding * 2;
         }
+
+        int lft() { return x; }
+        int rght() { return x + w; }
+        int tp() { return y; }
+        int btm() { return y - h; }
 };
 ```
+
 ``` c++
-```
-
-Functions:
-```c++
-
-int msr_element(const std::Element el) {
-    int w = 0;
-
-    for (size_t i = 0; i < el.items.size(); i++) {
-        const Text& item = el.items[i];
-        w += MeasureText(item.font, item.value, 0);
-
-        if (i + 1 < el.items.size()) {
-            w += el.space;
-        }
-    }
-
-    return w;
-}
-
-int msr_scroll(Canvas *c, int x, int y, const Element& el, int space, int l, int r) {
-    int w = msr_element(el.items, el.space);
-    int overflow = w + x - r
-
-    if (overflow > 0) {
-        int offset = w - overflow
-        int new_clip = x - space - overflow
-
-        if (new_clip > l)
-            return l - offset;
-        else
-            return new_clip - offset;
-    }
-    return -1;
-}
-
 // From image-example.cc
 void draw_image(Canvas *c, int x, int y, const Magick::Image &image) {
     for (size_t y = 0; y < image.rows(); ++y) {
@@ -574,8 +637,6 @@ static Magick::Image load_image(const std::string& path){
     image.scale(Magick::Geometry("x14")); // Scale height to 14px, auto width
     return image;
 }
-// Used for scrolling text
-
 ```
 
 Hzeller Library Edit:
