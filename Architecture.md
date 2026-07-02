@@ -497,7 +497,7 @@ std::vector<positions> layout(const AircraftDisplay& disp, int64_t time){
 }
 
 std::vector<positions> lay_row(int x, int y, int r,
-                               Row row, 
+                               const Row& row, 
                                std::optional<int64_t> time){
     std::vector<Positions> pos;
     int start = x;
@@ -531,19 +531,25 @@ std::vector<positions> lay_row(int x, int y, int r,
     }
 }
 
-int scrl_plcmnt(int start, int l, int r, int scrl_gap, int64_t time, Row rest) { // TODO: What to do with time
-    int width = msr_row(rest);
-    int leftover = start + width - r;
-    int offset = width - leftover;
-    int closest = start - width - scrl_gap;
+int scrl_plcmnt(int strt, int l, int r, 
+                int scrl_gap, int pps,
+                int64_t time, 
+                const Row& rest) {
+    
+    int scrl_ofst = time * (pps / 1000) % (r - l)
+    strt += scrl_ofst;
+    int w = msr_row(rest);
+    int r = start + w - r;
+    int offset = w - leftover;
+    int max_x = start - w - scrl_gap;
 
-    if ( l < closest)
+    if ( l < max_x)
         return l - offset;
     
-    return closest - offset;
+    return max_x - offset;
 }
 
-int msr_row(Row row) {
+int msr_row(const Row& row) {
     int w = 0;
     for (size_t i = 0; i < row.elements.size(); i++){
         Element elmnt = rest[i];
@@ -614,6 +620,13 @@ class Rect {
         int tp() { return y; }
         int btm() { return y - h; }
 };
+
+void draw(const std::vector<Placement>& positions){
+    for (const auto& pos : positions)
+        DrawText(pos.x, pos.y, pos.l, pos.r, 
+                 pos.text.val, pos.text.font,
+                 pos.text.c);
+}   
 ```
 
 ``` c++
