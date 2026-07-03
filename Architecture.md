@@ -6,6 +6,20 @@
 **Non-Commercial**
 ![Non-Commercial](assets/noncommercial.png) 
 
+**TODO:**
+Next up: finish sig handling with sigwait() on main function
+- make fail safe and make type(ref/val) qualifier decsions
+- sigint handling and nonpolling solution for main thread sending request_stop to child threads
+- how to handle the different SBS message types 
+- add option qualifier to optional fields
+- use steady clock for time
+- need exponential backoff for the try_sleep recv
+- build out psuedo code
+- slection needs to be thought out more. like I need to rank by closests by what about ties. also makes sure to only switch planes if the best plane is greater than a certain margin, and don't allow switches too quick. a plan should stay on the board for a certain amount of time always.
+- what to show when there is not nearby aircraft
+- create a config to hold data like current location and matrix settings. possiblity have it find my location for me.
+- patch file for clipping logic
+- build out the render thread main loop with double buffering 
 
 ## Intro 1: Thread safety
 
@@ -50,7 +64,6 @@ Includes:
 #include <condition_variable>
 ```
 
-TODO: Needs way to shutdown
 ``` c++
 template <typename T> // Class works with any type
 class TSQueue {
@@ -95,6 +108,11 @@ public:
 
 ## Intro 3: Proposed architecture
 
+Principles:
+1. Every loop either runs forever or is cancelled cooperatively
+2. Each time there is a handoff of data between threads we must use a thread safe primiative (Snapshot and TSQueue)
+3. When things go wrong do not fail, degrade or pass
+4. Anything that is blocking(recv, pop, GET) must be able to be woken by stop request
 ```
 Socket Reader (Thread 1)
     - Aquires mutex
@@ -620,8 +638,6 @@ int msr(const T& t){
     return w;
 }
 
-// TODO: make robust and type, qualifier decsions
-
 std::vector<Position> lay_elmnt(int x, int y, int& w,  int gap,
                                  Element& elmnt) {
     int start = x;
@@ -766,8 +782,6 @@ while true:
 
 ``` c++
 
-// TODO: sigint handling and nonpolling solution for main thread 
-// sending request_stop to child threads
 int main(){
     std::vector<std::jthread> threads;
 
