@@ -57,12 +57,11 @@ class TSQueue {
 private:
     std::queue<T> _q; // queue for any element
     mutable std::mutex _mtx; // lock access to queue / Why mutable? -> because idk i forgo im toired
-    std::condition_variable _cv; // Signal to other thread
+    std::condition_variable_any _cv; // Signal to other thread
 
 public:
     TSQueue(const TSQueue&) = delete; // Remove copy costructor
     TSQueue& operator=(const TSQueue&) = delete; // Remove copy assignment operator
-
 
     void push(const T& val) { // pass reference to not copy but make const so this function can't change shi
         {
@@ -72,14 +71,16 @@ public:
         _cv.notify_one(); // Notiy one of waiting thread 
     }
 
-    T pop(){
+    std::optional<T> pop(std::stop_token st){
         std::unique_lock<std::mutex> lock(_mtx); // unique lock for pop b/c wait needs to unlock and relock the mutex while thread sleeps
-        while (_q.empty()){
-            _cv.wait(lock);
+  
+        _cv.wait(lock, st, [this] { return !_q.empty(); });
+
+        if (!st.stop_requested()) { // Make sure we broke out of wait because the queue has something
+            T t = std::move(_q.front()); // Retrieve first in line then move ownership
+            _q.pop();
+            return t;
         }
-        T t = std::move(_q.front()); // Retrieve first in line then move ownership
-        _q.pop();
-        return t;
     }
     
     // empty()
@@ -108,13 +109,6 @@ Main (Thread 2).                            -->  Enrich Queue  -->  Enrich (Thre
     - pop message from queue.                                         - call api
     - parse msg, update plane               <--  Result Queue         - enrich aircraft object               
     - if new plane push to enrich queue                               - push to queue
-
-Maintenance (Thread 4):
-    Every 30 seconds:
-    - Update planes with result queue
-    - Clean stale planes
-    - Select plane
-    - Write to snapshot
 
 Snapshot
 
@@ -182,10 +176,8 @@ struct addrinfo // resolver fills a linked list of these; protocol-agnostic (IPv
 Helpers:
 
 ``` C++
-int socket_connection()
-{
-    const char *host = "localhost";
-    const char *port = "30003";       // ADSB feed port, as a service string for getaddrinfo
+int conn_sock(const char* host, const char* port){
+    // ADSB feed port, as a service string for getaddrinfo
 
     // Hints to resolver what kind of address is needed
     struct addrinfo hints{};         // value-init to all zero
@@ -194,47 +186,116 @@ int socket_connection()
 
     struct addrinfo *res = nullptr;  // resolver outputs linked list (free with freeaddrinfo)
     if (getaddrinfo(host, port, &hints, &res) != 0) // 0 if success
-        error("getaddrinfo");
+        return -1; 
 
-    int sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol); // AF_INET or AF_INET6 (Internet), STREAM, TCP
+    int fd = -1;
+    for (addrinfo* p = res; p != nullptr; p = p->ai_next){
+        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol); // AF_INET or AF_INET6 (Internet), STREAM, TCP
+        if (fd < 0)
+            continue; // Try next
+        
+        if (set_timeout(fd)
+            && connect(fd, p->ai_addr, p->ai_addrlen) == 0) // fd, binary address, length
+            break;
 
-    if (sockfd < 0) // Error check
-        error("socket");
-
-    // What about other members of linked list?
-    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0) // fd, binary address, length
-        error("connect");
+        close(fd); 
+        fd = -1;
+    }
 
     freeaddrinfo(res); // Free linked list
+    return fd;
+}
 
-    // accumulate below
-    // close fd - could use RAII wrapper (closes on scope exit)
+bool set_timeout(int fd){
+    timeval t{};
+    t.tv_sec = 1; // Seconds
+    t.tv_usec = 0; // Microseconds
+
+    return setsockopt(fd,SOL_SOCKET, SO_RCVTIMEO,&t, sizeof(t)) == 0;
 }
 ```
 
 ``` C++
-std::string buffer;
-char chunk[4096]; // common chunk size
 
-// Outer loop to read chunk message and add to buffer
-while (true)
-{
-    ssize_t n = recv(sockfd, chunk, sizeof(chunk), 0); // receive bytes from socket and save into chuck with default behavior (flags = 0)
+// This closes the fd upon return
+void recv_sock(int fd, TSQueue &q, std::stop_token st){
+    std::string buffer;
+    char chunk[4096]; // common chunk size
 
-    if (n <= 0)
-        break; // disconnect or error
-
-    buffer.append(chunk, n); // Add chunk of message to buffer
-
-    size_t pos;
-    // Inner loop to divide buffer into messages using delimeter
-    while ((pos = buffer.find("\r\n")) != std::string::npos) // npos means not found
+    // Outer loop to read chunk message and add to buffer
+    while (!st.stop_requested())
     {
-        std::string msg = buffer.substr(0, pos); // Save message
+        ssize_t n = recv(fd, chunk, sizeof(chunk), 0); // receive bytes from socket and save into   chuck with default behavior (flags = 0)
 
-        buffer.erase(0, pos + 2); // 2 for both \r and \n
-        // Handle msg
+        if (n == 0)
+            break; // connection closed
+
+        if (n < 0){
+            if (errno == EAGAIN || errno == EWOULDBLOCK) // Timeout try agin (need so that stop request check can be reached) 
+                continue;
+
+            break;
+        }
+
+        buffer.append(chunk, n); // Add chunk of message to buffer
+
+        size_t pos;
+        // Inner loop to divide buffer into messages using delimeter
+        while ((pos = buffer.find("\r\n")) != std::string::npos) // npos means not found
+        {
+            std::string msg = buffer.substr(0, pos); // Save message
+
+            buffer.erase(0, pos + 2); // 2 for both \r and \n
+            // Handle msg
+            q.push(msg);
+        }
     }
+
+    close(fd);
+}
+
+```
+
+``` c++
+
+void socket_reader(std::stop_token st, TSQueue &q){
+    const char *host = "localhost";
+    const char *port = "30003";
+    int fd;
+    std::chrono<milliseconds> time
+
+    while (!st.stop_requested()){
+        fd = conn_sock(host, port);
+
+        if (fd < 0) {
+            if !try_sleep(st, time) // Check if sleep interupted by stop request
+                break;
+            
+            continue;
+        }
+
+        recv_sock(fd, q, st);
+    }
+}
+
+// Sleep returns true if wait was not interupted by stop
+bool try_sleep(std::stop_token st,  std::chrono::milliseconds time){
+    // Mutex here is not meaningful, as in, it does not protected any shared data
+    // The only reason it is here is use the wait_until function which follows
+    // Condition variable semantics. THe only meaningful parts is the stoptoken
+    // and the time which wait until will use to stop waiting if the time is up
+    // of the stop token received a stop request
+    std::mutex mtx; 
+    std::condition_variable_any cv; // any is need because it expose wait until api with stop_token
+                                    // Regulare condition variable doesn't have it.
+    std::unique_lock<std::mutex> lock(mtx); // not meaningfull
+
+    cv.wait_until(lock, st, time, [] { return false; }) // Predicate not meaningful
+
+    if (st.stop_requested()) 
+        return false;
+
+    return true;
 }
 ```
 
@@ -254,13 +315,10 @@ struct Aircraft {
         heli,
     }
 
-    // SBS Data
+    // SBS Data - Required
+    std::string icao;
 
-    // Required
-    const std::string icao;
-
-
-    // Optional
+    // SBS Data - Optional
     std::string callsign;
     int track;
     double lat;
@@ -271,9 +329,9 @@ struct Aircraft {
 
     // API Data - Optional
     bool has_logo;
-    const std::string airline;
-    const std::string flightNo;
-    const std::string typeCode;
+    std::string airline;
+    std::string flightNo;
+    std::string typeCode;
     Operation op;
     Kind kind;
 
@@ -291,6 +349,7 @@ struct Aircraft {
 Main Psudeo Code:
 ``` psuedo
 lastUpdate
+
 while true:
     msg = parse(messageQueue.pop())
     aircraft = aircrafts.find(msg.iaco)
@@ -303,12 +362,8 @@ while true:
         continue
 
     aircraft.update(msg)
-```
 
-## 3: Maintenance
-
-Psuedo Code:
-``` psuedo
+    // Maintenance
     if time.now - lastUpdate >= 30:
 
         // Update planes with result queue
@@ -399,7 +454,7 @@ const rgb_matrix::Color BEIGE(255, 242, 213);
 
 
 struct Row {
-    std::vector<Element> elements;
+    std::vector<Element> items;
     int space;
     Mode mode;
 }
@@ -411,7 +466,7 @@ struct Element {
 };
 
 struct Text {
-    const std::string value;
+    const std::string items;
     const Font& font;
     const Color& color;
 }
@@ -549,31 +604,23 @@ int scrl_plcmnt(int strt, int l, int r,
     return max_x - offset;
 }
 
-int msr_row(const Row& row) {
-    int w = 0;
-    for (size_t i = 0; i < row.elements.size(); i++){
-        Element elmnt = rest[i];
-        w += msr_elmnt(elmnt, row.gap);
+int msr(const std::string& text){
+    return MeasureText(text.c_str());
+}
 
-        if (i < row.elements.size() - 1)
-            w += row.gap;
+template <typename T>
+int msr(const T& t){
+    int w = 0;
+    const size_t n = t.items.size();
+    for (size_t i = 0; i < n; i++){
+        w += msr(t.items[i]);
+        if (i + 1 < t.items.size())
+            w += t.gap;
     }
     return w;
 }
 
-int msr_elmnt(Element elmnt){
-    int w = 0;
-    for (size_t i = 0; i < elmnt.items.size(); i++>) {
-        Text itm = elmnt.items[i]
-        w += MeasureText(itm.value, itm.font);
-
-        if (i < elmnt.items.size() - 1)
-            w += elmnt.gap;
-    }
-    return w;
-}
 // TODO: make robust and type, qualifier decsions
-
 
 std::vector<Position> lay_elmnt(int x, int y, int& w,  int gap,
                                  Element& elmnt) {
@@ -621,11 +668,12 @@ class Rect {
         int btm() { return y - h; }
 };
 
-void draw(const std::vector<Placement>& positions){
+void draw(const std::vector<Placement>& positions, Canvas *c){
     for (const auto& pos : positions)
-        DrawText(pos.x, pos.y, pos.l, pos.r, 
-                 pos.text.val, pos.text.font,
-                 pos.text.c);
+        DrawText(c, pos.text.font,
+                 pos.x, pos.y, 
+                 pos.text.val.c_str(),
+                 pos.l, pos.r);
 }   
 ```
 
@@ -706,15 +754,28 @@ int DrawText(Canvas *c, const Font &font,
 Main:
 ``` Psuedo
 // setup canvas
+logo_cache:
 
 last;
 while true:
     plane = snapshot.read()
-
-    if (last.iaco == plane.iaco) {
-
-    }
+    
 ```
 
+## 6: Entry
 
+``` c++
+
+// TODO: sigint handling and nonpolling solution for main thread 
+// sending request_stop to child threads
+int main(){
+    std::vector<std::jthread> threads;
+
+    threads.emplace_back(socket_reader);
+    threads.emplace_back(main_proccess);
+    threads.emplace_back(enrich);
+    threads.emplace_back(render);
+}
+
+```
 
