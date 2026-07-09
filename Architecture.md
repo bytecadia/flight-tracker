@@ -9,7 +9,6 @@
 **TODO:**
 Next up: finish sig handling with sigwait() on main function
 - make fail safe and make type(ref/val) qualifier decsions
-- sigint handling and nonpolling solution for main thread sending request_stop to child threads
 - how to handle the different SBS message types 
 - add option qualifier to optional fields
 - use steady clock for time
@@ -781,14 +780,25 @@ while true:
 ## 6: Entry
 
 ``` c++
-
 int main(){
+    sigset_t s;
+    sigemptyset(&s);
+    sigaddset(&s, SIGINT);
+    sigaddset(&s, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &s, nullptr);
+
     std::vector<std::jthread> threads;
 
-    threads.emplace_back(socket_reader);
-    threads.emplace_back(main_proccess);
-    threads.emplace_back(enrich);
-    threads.emplace_back(render);
+    std::stop_source stp_src;
+    threads.emplace_back(socket_reader, stp_src.get_token());
+    threads.emplace_back(main_proccess, stp_src.get_token());
+    threads.emplace_back(enrich, stp_src.get_token());
+    threads.emplace_back(render, stp_src.get_token());
+
+    int sig;
+    sigwait(&s, &sig);
+
+    stp_src.request_stop();
 }
 
 ```
