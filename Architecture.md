@@ -7,8 +7,8 @@
 ![Non-Commercial](assets/noncommercial.png) 
 
 **TODO:**
-Next up: finish sig handling with sigwait() on main function
 - make fail safe and make type(ref/val) qualifier decsions
+- comment throughly for myself
 - how to handle the different SBS message types 
 - add option qualifier to optional fields
 - use steady clock for time
@@ -32,12 +32,12 @@ private:
 
 public:
 
-    void write(const Aircraft a){
+    void write(Aircraft a){
         std::lock_guard<std::mutex> lock(_mtx);
-        _a = a;
+        _a = std::move(a);
     }
 
-    Aircraft read(){
+    const Aircraft& read() const{
         std::lock_guard<std::mutex> lock(_mtx);
         return _a;
     }
@@ -88,13 +88,38 @@ public:
   
         _cv.wait(lock, st, [this] { return !_q.empty(); });
 
-        if (!st.stop_requested()) { // Make sure we broke out of wait because the queue has something
-            T t = std::move(_q.front()); // Retrieve first in line then move ownership
-            _q.pop();
-            return t;
-        }
+        if (_q.empty()) return std::nullopt;
+
+        T t = std::move(_q.front()); // Retrieve first in line then move ownership
+        _q.pop();
+        return t;
+    }
+
+    std::optional<T> pop_until(std::stop_token st, std::chrono::time_point deadline){
+        std::unique_lock<std::mutex> lock(_mtx);
+        _cv.wait_until(lock, st, deadline, [this] { return !q.empty(); });
+
+        if (_q.empty()) return std::nullopt;
+        
+        T t = std::move(_q.front());
+        _q.pop();
+        return t;
+    }
+
+    std::optional<T> try_pop(){
+        std::lock_guard<std::mutex> lock(_mtx);
+        if (q.empty()) return std::nullopt;
+
+        T t = std::move(_q.front());
+
+        _q.pop();
+        return t;
     }
     
+    bool empty(){
+        std::lock_guard<std::mutex> lock(_mtx);
+        return _q.empty();
+    }
     // empty()
     // size()
 }
@@ -318,49 +343,168 @@ bool try_sleep(std::stop_token st,  std::chrono::milliseconds time){
 
 ## 2: Main Aircraft Processing
 
+[reference]("http://woodair.net/sbs/article/barebones42_socket_data.htm")
+
 Aircraft Stuct:
 ``` C++
 struct Aircraft {
     enum class Operation {
-        com,
-        non,
-        ukn
+        Com,
+        Non
     }
-    enum class Kind {
-        prop,
-        jet,
-        heli,
+    enum class Type {
+        Prop,
+        Jet,
+        Heli,
     }
+
+    bool enriched;
 
     // SBS Data - Required
-    std::string icao;
+    std::string icao; // Field 4 - all messages
 
     // SBS Data - Optional
-    std::string callsign;
-    int track;
-    double lat;
-    double lon;
-    int altitude;
-    int groundSpeed;
-    bool isOnGround;
+    std::string callsign; // Field 11 - MSG 1
+    int alt; // Field 12 - MSG 2,3,5,6,7 
+    int gs; // Field 13 - MSG 2,4
+    int trk; // Field 14 - MSG 2,4
+    double lat; // Field 15 - MSG 2,3
+    double lon; // Field 16 - MSG 2,3
+    bool gnd; // Field 22 - MSG 2,3,5,6,7,8
 
     // API Data - Optional
     bool has_logo;
     std::string airline;
-    std::string flightNo;
-    std::string typeCode;
+    std::string flight_no;
+    std::string type_code;
     Operation op;
-    Kind kind;
+    Type type;
 
     // Derived Data - Optional
     double distance;
-    //[time type] lastSeen;
+    std::chrono::steady_clock::time_point last_seen;
 
     // Constructor that takes in just the IACO and defaults the other fields
+    Aircraft(std::string iaco) : iaco(iaco) }{};
 
     // Method to update fields from on msg string
+    void update(std::vector<std::string> msg) {
+        last_seen = std::chrono::steady_clock::now();
+
+        switch (std::stoi(msg[1])){ // MSG type
+            case 1:
+                callsign = msg[10];
+                break;
+            case 2:
+                alt = std::stoi(msg[11]);
+                gs = std::stoi(msg[12]);
+                trk = std::stoi(msg[13]);
+                lat = std::stod(msg[14]);
+                lon = std::stod(msg[15]);
+                gnd  = std::stoi(msg[21]);
+                distance = calc_distance(lat, lon);
+                break;
+            case 3:
+                alt = std::stoi(msg[11]);
+                lat = std::stod(msg[14]);
+                lon = std::stod(msg[15]);
+                gnd  = std::stoi(msg[21]);
+                distance = calc_distance(lat, lon);
+                break;
+            case 4:
+                gs = std::stoi(msg[12]);
+                trk = std::stoi(msg[13]);
+                break;
+            case 5:
+                alt = std::stoi(msg[11]);
+                gnd  = std::stoi(msg[21]);
+                break;
+            case 6:
+                alt = std::stoi(msg[11]);
+                gnd  = std::stoi(msg[21]);
+                break;
+            case 7:
+                alt = std::stoi(msg[11]);
+                gnd  = std::stoi(msg[21]);
+                break;
+            case 8:
+                gnd  = std::stoi(msg[21]);
+                break;
+        }
+    }
     // Method to enrich from enrich json
 };
+
+double calc_distance(double lat, double lon) {
+    // TODO: write logic
+}
+
+void process(std::stop_token st, 
+             TSQueue& msg_q, 
+             TSQueue& enrich_q, 
+             TSQueue result_q, 
+             Snapshot snapshot){
+    std::map<std::string, Aircraft> aircrafts;
+    auto deadline = std::chrono::steady_clock::now() + 30s;
+
+    while (!st.stop_requested()){
+        std::optional<std::string> msg = msg_q.pop_until(st /*, deadline */);
+        if (st.stop_requested()) return;
+
+        // Process message
+        if (msg) {
+            std::vector<std::string> fields = split(msg, ",");
+            std::string iaco = fields[1];
+            auto [it, inserted] = aircrafts.try_emplace(icao, icao);
+            
+            it->second.update(fields);
+
+
+            if (!it->second.enriched 
+                && !it->second.callsign.empty())
+                enrich_q.push(Request{it->second.icao, it->second.callsign});
+        }
+
+        // Maintenance
+        auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+
+            // Enrich
+            while (!result_q.empty()){
+                auto response = result_q.try_pop();
+                if (!response) continue;
+
+                auto a aircrafts.find(response.icao); // TODO: Make response struct
+                if (a == aircrafts.end()) continue;
+
+                a->enrich(response.data) // TODO: Make response struct and enrich method
+            }
+
+            // Clean stale aircraft
+            for (auto it = airacrafts.begin; it != aircrafts.end();){
+                if (now - it->second.last_update >= 60s)
+                    it = aircrafts.erase(it);
+                else
+                    ++it;
+            }
+
+            if (aircrafts.empty()) return;
+
+            // Select featured aircraft
+            Aircraft* featured = &(aircrafts.begin()->second);
+            int closest = featured.distance;
+            for (auto& [icao, a] : aircrafts){
+                if (a.distance < closest)
+                    closest = a.distance;
+                    featured = &a;
+            }
+            snapshot.write(*a);
+        }
+    }
+}
+
+
+
 ```
 
 Main Psudeo Code:
@@ -373,7 +517,6 @@ while true:
 
     if (!aircraft)
         new = Aircraft(msg)
-        aircraft.update(msg)
         aircrafts.add(new)
         enrichQueue.push([new.iaco, new.callsign])
         continue
@@ -405,8 +548,11 @@ API Call: `https://api.adsbdb.com/v0/aircraft/{ MODE_S || REGISTRATION }?callsig
 - MODE_S = icao
 - CALLSIGN_ICAO = callsign
 
+Highlevel:
+Api I calls are slow and prone to issues. We issolate this execution from main thread to prevent main executions from being blocked. Below I list some considertations for making robust API calls:
+
 Response (Relevant fields only):
-```
+``` json
 {
     "response": {
         "aircraft": {
@@ -430,6 +576,16 @@ Response (Relevant fields only):
                 "longitude": 14.26,
             }
         }
+    }
+}
+```
+
+``` c++
+void enrich(std::stop_token st, TSQueue enrich_q, TSQueue result_q){
+    while (!st.stop_requested){
+        auto req = enrich_q.pop(st); // Blocking ok I thinks
+        std::string url = std::format("https://api.adsbdb.com/v0/aircraft/{}?callsign={}", req.icao, req.callsign);
+
     }
 }
 ```
@@ -492,6 +648,11 @@ enum class Mode {
     clip,
     fit,
     scroll
+};
+
+enum class Theme {
+    Com,
+    Non
 };
 
 struct AircraftDisplay {
@@ -766,6 +927,29 @@ int DrawText(Canvas *c, const Font &font,
 }
 ```
 
+
+``` c++
+
+void render(std::stop_token st, Snapshot snap){
+    // TODO: add checks for success and add font path
+    rgb_matrix::Font sml = font.LoadFont(""); 
+    rgb_matrix::Font med = font.LoadFont(""); 
+    rgb_matrix::Font lrg = font.LoadFont(""); 
+
+    auto start = std::chrono::steady_clock::now();
+    while (!st.stop_requested){
+        auto a = snap.read(); // TODO: Make this blocking
+        if (st.stop_requested) return; 
+        Theme t = (a.type == Type::Com) ? Theme::Comm : Theme::Non;
+        AircraftDisplay disp{a, t, sml, med, lrg};
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::millisecongs>(std::chrono::steady_clock::now() - start).count();
+        std::vector<Position> pos = layout(disp, elapsed);
+        // TODO: Finish render logic
+    }
+}
+```
+
 Main:
 ``` Psuedo
 // setup canvas
@@ -791,7 +975,7 @@ int main(){
 
     std::stop_source stp_src;
     threads.emplace_back(socket_reader, stp_src.get_token());
-    threads.emplace_back(main_proccess, stp_src.get_token());
+    threads.emplace_back(proccess, stp_src.get_token());
     threads.emplace_back(enrich, stp_src.get_token());
     threads.emplace_back(render, stp_src.get_token());
 
