@@ -7,18 +7,16 @@
 ![Non-Commercial](assets/noncommercial.png) 
 
 **TODO:**
-- make fail safe and make type(ref/val) qualifier decsions
-- comment throughly for myself
-- how to handle the different SBS message types 
-- add option qualifier to optional fields
-- use steady clock for time
-- need exponential backoff for the try_sleep recv
-- build out psuedo code
-- slection needs to be thought out more. like I need to rank by closests by what about ties. also makes sure to only switch planes if the best plane is greater than a certain margin, and don't allow switches too quick. a plan should stay on the board for a certain amount of time always.
-- what to show when there is not nearby aircraft
-- create a config to hold data like current location and matrix settings. possiblity have it find my location for me.
-- patch file for clipping logic
-- build out the render thread main loop with double buffering 
+- Config file for matrix options and location
+- Calculate distance function
+- Create split() helper
+- Build with cmake
+- Where to save logo files
+- Design logo cache
+- Finish renderer main
+- Fix reference types
+- Comment throughly
+- Error handling
 
 ## Intro 1: Thread safety
 
@@ -43,7 +41,6 @@ public:
     }
 };
 ```
-
 
 ### Thread Safe Queue
 
@@ -125,10 +122,7 @@ public:
 }
 ```
 
-
-
 ## Intro 2: Makefiles
-
 
 ## Intro 3: Proposed architecture
 
@@ -191,7 +185,6 @@ Producer Thread -> Queue --> Consumer Thread
 Implementation:
 
 Includes:
-
 <cstdio> : perror, etc.
 <cstdlib> : exit
 <string> / <vector> : own and return the parsed messages
@@ -200,7 +193,6 @@ Includes:
 <netdb.h> : getaddrinfo + addrinfo 
 
 Structs:
-
 ``` C++
 struct addrinfo // resolver fills a linked list of these; protocol-agnostic (IPv4/IPv6)
 {
@@ -216,7 +208,6 @@ struct addrinfo // resolver fills a linked list of these; protocol-agnostic (IPv
 ```
 
 Helpers:
-
 ``` C++
 int conn_sock(const char* host, const char* port){
     // ADSB feed port, as a service string for getaddrinfo
@@ -258,7 +249,6 @@ bool set_timeout(int fd){
 ```
 
 ``` C++
-
 // This closes the fd upon return
 void recv_sock(int fd, TSQueue &q, std::stop_token st){
     std::string buffer;
@@ -295,24 +285,24 @@ void recv_sock(int fd, TSQueue &q, std::stop_token st){
 
     close(fd);
 }
-
 ```
 
 ``` c++
-
 void socket_reader(std::stop_token st, TSQueue &q){
     const char *host = "localhost";
     const char *port = "30003";
     int fd;
     std::chrono<milliseconds> time
 
+    int attempt = 0;
     while (!st.stop_requested()){
         fd = conn_sock(host, port);
 
         if (fd < 0) {
-            if !try_sleep(st, time) // Check if sleep interupted by stop request
+            int delay = 1000 * std::power(2, attempt);
+            if !try_sleep(st, delay) // Check if sleep interupted by stop request
                 return;
-            
+            attempt++;
             continue;
         }
 
@@ -471,13 +461,13 @@ void process(std::stop_token st,
 
             // Enrich
             while (!result_q.empty()){
-                auto response = result_q.try_pop();
-                if (!response) continue;
+                auto result = result_q.try_pop();
+                if (!result) continue;
 
-                auto a aircrafts.find(response.icao); // TODO: Make response struct
+                auto a aircrafts.find(result.icao); // TODO: Make result struct
                 if (a == aircrafts.end()) continue;
 
-                a->enrich(response.data) // TODO: Make response struct and enrich method
+                a->enrich(result.data) // TODO: Make result struct and enrich method
             }
 
             // Clean stale aircraft
@@ -502,9 +492,6 @@ void process(std::stop_token st,
         }
     }
 }
-
-
-
 ```
 
 Main Psudeo Code:
@@ -984,7 +971,6 @@ int DrawText(Canvas *c, const Font &font,
 
 
 ``` c++
-
 void render(std::stop_token st, Snapshot snap){
     // TODO: add checks for success and add font path
     rgb_matrix::Font sml = font.LoadFont(""); 
@@ -999,8 +985,12 @@ void render(std::stop_token st, Snapshot snap){
         AircraftDisplay disp{a, t, sml, med, lrg};
 
         auto elapsed = std::chrono::duration_cast<std::chrono::millisecongs>(std::chrono::steady_clock::now() - start).count();
-        std::vector<Position> pos = layout(disp, elapsed);
+        std::vector<Position> positions = layout(disp, elapsed);
+
         // TODO: Finish render logic
+        for (const auto& pos : positions){
+            DrawText();
+        }
     }
 }
 ```
@@ -1039,6 +1029,4 @@ int main(){
 
     stp_src.request_stop();
 }
-
 ```
-
