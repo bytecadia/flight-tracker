@@ -311,7 +311,7 @@ void socket_reader(std::stop_token st, TSQueue &q){
 
         if (fd < 0) {
             if !try_sleep(st, time) // Check if sleep interupted by stop request
-                break;
+                return;
             
             continue;
         }
@@ -551,6 +551,13 @@ API Call: `https://api.adsbdb.com/v0/aircraft/{ MODE_S || REGISTRATION }?callsig
 Highlevel:
 Api I calls are slow and prone to issues. We issolate this execution from main thread to prevent main executions from being blocked. Below I list some considertations for making robust API calls:
 
+- Connection to server might fail or timeout
+- Response times out
+- The response could return an error
+- There could be a malformed json
+- There might be rate limits
+
+
 Response (Relevant fields only):
 ``` json
 {
@@ -566,14 +573,10 @@ Response (Relevant fields only):
 
             // Might use lat/lon for path UI
             "origin": { 
-                "iata_code": "EDI",
-                "latitude": 55.950145, 
-                "longitude": -3.372288,
+                "iata_code": "EDI"
             },
             "destination": {
-                "iata_code": "PRG",
-                "latitude": 50.1008,
-                "longitude": 14.26,
+                "iata_code": "PRG"
             }
         }
     }
@@ -581,12 +584,64 @@ Response (Relevant fields only):
 ```
 
 ``` c++
-void enrich(std::stop_token st, TSQueue enrich_q, TSQueue result_q){
-    while (!st.stop_requested){
+void enrich(std::stop_token st, TSQueue& enrich_q, TSQueue& result_q){
+    while (!st.stop_requested()){
         auto req = enrich_q.pop(st); // Blocking ok I thinks
-        std::string url = std::format("https://api.adsbdb.com/v0/aircraft/{}?callsign={}", req.icao, req.callsign);
+        if (!req) continue;
 
+        const int MAX_ATTEMPTS = 3;
+
+        int attempt = 0;
+        bool success = false;
+        cpr::Response resp;
+
+        while (attempt < MAX_ATTEMPTS){
+            resp = cpr::Get(
+            cpr::Url{"https://api.adsbdb.com/v0/aircraft/" + req->icao},
+            cpr::Parameters{{"callsign", req->callsign}},
+            cpr::ConnectTimeout{1000},
+            cpr::Timeout{3000});
+
+            if (resp.status_code >= 200 && resp.status_code < 300){
+                success = true;
+                break;
+            }
+            if (resp.status_code >= 400 && resp.status_code < 500)
+                break;
+            
+            int delay = 1000 * std::pow(2, attempt);
+            if (!try_sleep(st, std::chrono::milliseconds(delay)))
+                return;
+
+            attempt++;
+        }
+
+        Result res;
+        if (success){
+            try {
+                res.icao = req->icao;
+                res.data = json::parse(resp.text);
+                res.valid = true;
+
+                result_q.push(res);
+                continue;
+            }
+            catch (const json::parse_error& e) {}
+        }
+
+        res.icao = req->icao;
+        res.data = json::object();
+        res.valid = false;
+
+        result_q.push(res);
     }
+}
+
+// Make sure to use .value to access in cases the key doesn't exist
+struct Result {
+    int icao;
+    json data;
+    bool valid;
 }
 ```
 
