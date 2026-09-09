@@ -1,27 +1,22 @@
 #pragma once
 
-#include "ini.h"
+// #include "ini.h" TODO: Fix package includes
+#include <INIReader.h>
 #include <string>
 
 struct Config
 {
     std::string host;
-    int port;
+    std::string port;
 };
 
 inline Config parse_cfg(std::string path)
 {
-    mINI::INIFile file(path);
-    mINI::INIStructure ini;
-
-    if (!file.read(ini))
-    {
-        throw std::runtime_error("Failed to read config file: " + path);
-    }
+    INIReader reader(path); // TODO: what if reader fails
 
     Config config;
-    config.host = ini["network"]["host"];
-    config.port = std::stoi(ini["network"]["port"]);
+    config.host = reader.Get("network", "host", "127.0.0.1");
+    config.port = reader.Get("network", "port", "30003");
 
     return config;
 }

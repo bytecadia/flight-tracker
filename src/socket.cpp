@@ -23,7 +23,7 @@ bool set_timeout(int fd)
 
 int conn_sock(const char *host, const char *port)
 {
-    // ADSB feed port, as a service string for getaddrinfo
+    // ADSB feed , as a service string for getaddrinfo
 
     // Hints to resolver what kind of address is needed
     struct addrinfo hints{};         // value-init to all zero
@@ -123,20 +123,19 @@ bool try_sleep(std::stop_token st, std::chrono::milliseconds time)
     return !st.stop_requested();
 }
 
-void socket_reader(std::stop_token st, TSQueue<std::string> &q)
+void socket_reader(std::stop_token st, TSQueue<std::string> &q, const Config &cfg)
 {
-    const char *host = "localhost";
-    const char *port = "30003";
     int fd;
 
     int attempt = 0;
+    auto prev_attempt = std::chrono::steady_clock::now();
     while (!st.stop_requested())
     {
         if (attempt > 0)
             if (!try_sleep(st, std::chrono::milliseconds(1000 << attempt)))
                 return;
 
-        fd = conn_sock(host, port);
+        fd = conn_sock(cfg.host.c_str(), cfg.port.c_str());
 
         if (fd < 0)
         {
@@ -144,10 +143,17 @@ void socket_reader(std::stop_token st, TSQueue<std::string> &q)
             continue;
         }
 
-        // TODO: What do to do when hanging continuously - show something to screen?
-        attempt = 0;
+        auto connected_at = std::chrono::steady_clock::now();
+
         recv_sock(fd, q, st);
 
-        attempt = (now() - t0 >= 5s) ? 0 : min(attempt + 1, 5);
+        auto connection_time =
+            std::chrono::steady_clock::now() - connected_at;
+
+        // TODO: What do to do when hanging continuously - show something to screen?
+        if (connection_time >= std::chrono::seconds(5))
+            attempt = 0;
+        else // Handle immediate disconnect and add backoff
+            attempt = std::min(attempt + 1, 5);
     }
 }

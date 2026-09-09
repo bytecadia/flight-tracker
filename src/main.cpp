@@ -17,13 +17,13 @@ int main()
     sigaddset(&s, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &s, nullptr);
 
-    Config cfg = config::parse_cfg("../config.ini");
+    Config cfg = parse_cfg("../config.ini");
 
     TSQueue<std::string> msg_q;
     std::vector<std::jthread> threads;
 
     std::stop_source stp_src;
-    threads.emplace_back(socket_reader, stp_src.get_token(), ref(msg_q));
+    threads.emplace_back(socket_reader, stp_src.get_token(), ref(msg_q), cfg); // config read only
     // threads.emplace_back(proccess, stp_src.get_token());
     // threads.emplace_back(enrich, stp_src.get_token());
     // threads.emplace_back(render, stp_src.get_token());
