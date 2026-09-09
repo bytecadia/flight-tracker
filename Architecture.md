@@ -1,4 +1,4 @@
-# FlightWall Layout
+# FlightCast Layout
 
 ### UI Mockups
 **Commercial**
@@ -6,15 +6,14 @@
 **Non-Commercial**
 ![Non-Commercial](assets/noncommercial.png) 
 
-**TODO:**
-- Config file for matrix options and location
-- Calculate distance function
-- Create split() helper
-- Build with cmake
+
+**Need:**
+- cmake
 - Where to save logo files
+
+**Nice to haves:**
+- Config file for matrix options and location (maybe need for others)
 - Design logo cache
-- Finish renderer main
-- Fix reference types
 - Comment throughly
 - Error handling
 
@@ -35,7 +34,7 @@ public:
         _a = std::move(a);
     }
 
-    const Aircraft& read() const{
+    Aircraft read() const{
         std::lock_guard<std::mutex> lock(_mtx);
         return _a;
     }
@@ -58,6 +57,10 @@ Includes:
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <optional>
+#include <stop_token>
+#include <chrono>
+#include <utility>
 ```
 
 ``` c++
@@ -65,10 +68,11 @@ template <typename T> // Class works with any type
 class TSQueue {
 private:
     std::queue<T> _q; // queue for any element
-    mutable std::mutex _mtx; // lock access to queue / Why mutable? -> because idk i forgo im toired
+    mutable std::mutex _mtx; // lock access to queue / Why mutable? -> so const methods can still lock 
     std::condition_variable_any _cv; // Signal to other thread
 
 public:
+    TSQueue() = default; // Requaired because altering constructors makes cpp stop giving you the free default one and TSQueue<std::string> q; wouldn't compile
     TSQueue(const TSQueue&) = delete; // Remove copy costructor
     TSQueue& operator=(const TSQueue&) = delete; // Remove copy assignment operator
 
@@ -92,9 +96,9 @@ public:
         return t;
     }
 
-    std::optional<T> pop_until(std::stop_token st, std::chrono::time_point deadline){
+    std::optional<T> pop_until(std::stop_token st, std::chrono::steady_clock::time_point deadline){
         std::unique_lock<std::mutex> lock(_mtx);
-        _cv.wait_until(lock, st, deadline, [this] { return !q.empty(); });
+        _cv.wait_until(lock, st, deadline, [this] { return !_q.empty(); });
 
         if (_q.empty()) return std::nullopt;
         
@@ -105,7 +109,7 @@ public:
 
     std::optional<T> try_pop(){
         std::lock_guard<std::mutex> lock(_mtx);
-        if (q.empty()) return std::nullopt;
+        if (_q.empty()) return std::nullopt;
 
         T t = std::move(_q.front());
 
@@ -113,13 +117,13 @@ public:
         return t;
     }
     
-    bool empty(){
+    bool empty() const{
         std::lock_guard<std::mutex> lock(_mtx);
         return _q.empty();
     }
     // empty()
     // size()
-}
+};
 ```
 
 ## Intro 2: Makefiles
@@ -244,7 +248,7 @@ bool set_timeout(int fd){
     t.tv_sec = 1; // Seconds
     t.tv_usec = 0; // Microseconds
 
-    return setsockopt(fd,SOL_SOCKET, SO_RCVTIMEO,&t, sizeof(t)) == 0;
+    return setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,&t, sizeof(t)) == 0;
 }
 ```
 
@@ -422,11 +426,32 @@ struct Aircraft {
                 break;
         }
     }
+
     // Method to enrich from enrich json
+    enrich()
 };
 
-double calc_distance(double lat, double lon) {
-    // TODO: write logic
+std::vector<std::string_view> split(std::string_view msg){
+    return msg
+    | std::views::split(',')
+    | std::ranges::to<std::vector<std::string_view>>>();
+}
+
+double calc_distance(double lat1, double lat2){
+    double phi1 = rads(lat1);
+    double phi2 = rads(lat2);
+    double lambda1 = rads(lon1);
+    double lambda2 = rads(lon2);
+
+    sclr = std::cos((lambda2 + lambda1)/2);
+    y = phi2 - phi1;
+    x = (lambda2 - lambda1) * sclr;
+
+    return std::sqrt(x * x + y * y) * 3959;
+}
+
+double rads(double deg){
+    return deg * (std::numbers::pi / 180);
 }
 
 void process(std::stop_token st, 
@@ -703,7 +728,8 @@ struct AircraftDisplay {
     Rect content;
 
     AircraftDisplay(const Aircraft& a, const Theme& t,
-                    const Font sml, const Font med, const Font lrg) {
+                    const Font sml, const Font med, const Font lrg
+                    int x, int y, int w, int h, int padding) {
         
         switch (t) {
             case Theme::Com:
@@ -737,8 +763,11 @@ struct AircraftDisplay {
                                     Element{Mode::Fit, 2, {Text{"-", med, YELLOW},
                                                               Text{a.trk, med, YELLOW},
                                                               Text{"°", sml, LIGHT_YELLOW}}}}, 2});
-                break;
-        }
+                break;  
+            }
+
+        Rect content(x, y, w, h);
+        content.inset(padding);
     }
 }
 
@@ -971,28 +1000,54 @@ int DrawText(Canvas *c, const Font &font,
 
 
 ``` c++
-void render(std::stop_token st, Snapshot snap){
+void render(std::stop_token st, Snapshot& snap){
+    // TODO: Config here
+    RGBMatrix::Options options;
+    options.rows = 32;
+    options.cols = 64;
+
+    rgb_matrix::RuntimeOptions runtime_opt;
+
+    RGBMatrix *mtrx = RGBMatrix::CreateFromOptions(options, runtime_opt);
+    if (mtrx == NULL)
+        return;
+
+    FrameCanvas* canvas = mtrx->CreateFrameCanvas();
+
     // TODO: add checks for success and add font path
+    // TODO: config or just normal path here hzeller has these (.bdf)s
     rgb_matrix::Font sml = font.LoadFont(""); 
     rgb_matrix::Font med = font.LoadFont(""); 
     rgb_matrix::Font lrg = font.LoadFont(""); 
 
     auto start = std::chrono::steady_clock::now();
-    while (!st.stop_requested){
+    while (!st.stop_requested()){
+        ca
         auto a = snap.read(); // TODO: Make this blocking
         if (st.stop_requested) return; 
-        Theme t = (a.type == Type::Com) ? Theme::Comm : Theme::Non;
-        AircraftDisplay disp{a, t, sml, med, lrg};
+        Theme t = (a.op == Aircraft::Operations::Com) ? Theme::Comm : Theme::Non;
+        AircraftDisplay disp{a, t, sml, med, lrg, };
 
         auto elapsed = std::chrono::duration_cast<std::chrono::millisecongs>(std::chrono::steady_clock::now() - start).count();
-        std::vector<Position> positions = layout(disp, elapsed);
+        auto positions = layout(disp, elapsed);
 
-        // TODO: Finish render logic
-        for (const auto& pos : positions){
-            DrawText();
+        canvas->Clear();
+
+        if (a.has_logo){
+            Magick::Image logo = load_image(std::format("./assets/{}", a.airline));
+            draw_image(canvas, disp.content.lft(), disp.content.tp(), logo);
         }
+        draw(positions, canvas);
+        canvas = mtrx->SwapOnVSync(canvas);
     }
+
+    delete mtrx;
 }
+
+
+
+
+
 ```
 
 Main:

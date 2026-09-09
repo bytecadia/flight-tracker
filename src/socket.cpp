@@ -1,0 +1,136 @@
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <cerrno>
+#include <string>
+#include <chrono>
+#include <mutex>
+#include <condition_variable>
+#include <cmath>
+
+#include "socket.hpp"
+
+bool set_timeout(int fd)
+{
+    timeval t{};
+    t.tv_sec = 1;  // Seconds
+    t.tv_usec = 0; // Microseconds
+
+    return setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &t, sizeof(t)) == 0;
+}
+
+int conn_sock(const char *host, const char *port)
+{
+    // ADSB feed port, as a service string for getaddrinfo
+
+    // Hints to resolver what kind of address is needed
+    struct addrinfo hints{};         // value-init to all zero
+    hints.ai_family = AF_UNSPEC;     // IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP
+
+    struct addrinfo *res = nullptr;                 // resolver outputs linked list (free with freeaddrinfo)
+    if (getaddrinfo(host, port, &hints, &res) != 0) // 0 if success
+        return -1;
+
+    int fd = -1;
+    for (addrinfo *p = res; p != nullptr; p = p->ai_next)
+    {
+        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol); // AF_INET or AF_INET6 (Internet), STREAM, TCP
+        if (fd < 0)
+            continue; // Try next
+
+        if (set_timeout(fd) && connect(fd, p->ai_addr, p->ai_addrlen) == 0) // fd, binary address, length
+            break;
+
+        close(fd);
+        fd = -1;
+    }
+
+    freeaddrinfo(res); // Free linked list
+    return fd;
+}
+
+// This closes the fd upon return
+void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
+{
+    std::string buffer;
+    char chunk[4096]; // common chunk size
+
+    // Outer loop to read chunk message and add to buffer
+    while (!st.stop_requested())
+    {
+        ssize_t n = recv(fd, chunk, sizeof(chunk), 0); // receive bytes from socket and save into   chuck with default behavior (flags = 0)
+
+        if (n == 0)
+            break; // connection closed
+
+        if (n < 0)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) // Timeout try agin (need so that stop request check can be reached)
+                continue;
+
+            break;
+        }
+
+        buffer.append(chunk, n); // Add chunk of message to buffer
+
+        size_t pos;
+        // Inner loop to divide buffer into messages using delimeter
+        while ((pos = buffer.find("\r\n")) != std::string::npos) // npos means not found
+        {
+            std::string msg = buffer.substr(0, pos); // Save message
+
+            buffer.erase(0, pos + 2); // 2 for both \r and \n
+            // Handle msg
+            q.push(msg);
+        }
+    }
+
+    close(fd);
+}
+
+// Sleep returns true if wait was not interupted by stop
+bool try_sleep(std::stop_token st, std::chrono::milliseconds time)
+{
+    // Mutex here is not meaningful, as in, it does not protected any shared data
+    // The only reason it is here is use the wait_until function which follows
+    // Condition variable semantics. THe only meaningful parts is the stoptoken
+    // and the time which wait until will use to stop waiting if the time is up
+    // of the stop token received a stop request
+    std::mutex mtx;
+    std::condition_variable_any cv;         // any is need because it expose wait until api with stop_token
+                                            // Regulare condition variable doesn't have it.
+    std::unique_lock<std::mutex> lock(mtx); // not meaningfull
+
+    cv.wait_for(lock, st, time, []
+                { return false; }); // Predicate not meaningful
+
+    return !st.stop_requested();
+}
+
+void socket_reader(std::stop_token st, TSQueue<std::string> &q)
+{
+    const char *host = "localhost";
+    const char *port = "30003";
+    int fd;
+
+    int attempt = 0;
+    while (!st.stop_requested())
+    {
+        fd = conn_sock(host, port);
+
+        if (fd < 0)
+        {
+            int delay = static_cast<int>(1000 * std::pow(2, attempt));
+            if (!try_sleep(st, std::chrono::milliseconds(delay))) // Check if sleep interupted by stop request
+                return;
+            attempt++;
+            continue;
+        }
+
+        // TODO: What do to do when hanging continuously - show something to screen?
+        attempt = std::min(attempt + 1, 5); // Limit backoff to 32 seconds
+        recv_sock(fd, q, st);
+    }
+}
