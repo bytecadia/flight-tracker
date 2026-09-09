@@ -7,9 +7,10 @@
 #include <chrono>
 #include <mutex>
 #include <condition_variable>
-#include <cmath>
 
 #include "socket.hpp"
+
+constexpr std::size_t MAX_BUFFER = 64 * 1024;
 
 bool set_timeout(int fd)
 {
@@ -58,6 +59,7 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
     char chunk[4096]; // common chunk size
 
     // Outer loop to read chunk message and add to buffer
+    bool resync = false;
     while (!st.stop_requested())
     {
         ssize_t n = recv(fd, chunk, sizeof(chunk), 0); // receive bytes from socket and save into   chuck with default behavior (flags = 0)
@@ -67,13 +69,19 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
 
         if (n < 0)
         {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) // Timeout try agin (need so that stop request check can be reached)
+            if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) // Timeout try agin (need so that stop request check can be reached)
                 continue;
 
             break;
         }
 
         buffer.append(chunk, n); // Add chunk of message to buffer
+
+        if (buffer.size() > MAX_BUFFER)
+        {
+            buffer.clear();
+            resync = true;
+        }
 
         size_t pos;
         // Inner loop to divide buffer into messages using delimeter
@@ -83,6 +91,12 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
 
             buffer.erase(0, pos + 2); // 2 for both \r and \n
             // Handle msg
+            if (resync)
+            {
+                resync = false;
+                continue;
+            }
+
             q.push(msg);
         }
     }
@@ -118,19 +132,22 @@ void socket_reader(std::stop_token st, TSQueue<std::string> &q)
     int attempt = 0;
     while (!st.stop_requested())
     {
+        if (attempt > 0)
+            if (!try_sleep(st, std::chrono::milliseconds(1000 << attempt)))
+                return;
+
         fd = conn_sock(host, port);
 
         if (fd < 0)
         {
-            int delay = static_cast<int>(1000 * std::pow(2, attempt));
-            if (!try_sleep(st, std::chrono::milliseconds(delay))) // Check if sleep interupted by stop request
-                return;
-            attempt++;
+            attempt = std::min(attempt + 1, 5); // Limit backoff to 32 seconds
             continue;
         }
 
         // TODO: What do to do when hanging continuously - show something to screen?
-        attempt = std::min(attempt + 1, 5); // Limit backoff to 32 seconds
+        attempt = 0;
         recv_sock(fd, q, st);
+
+        attempt = (now() - t0 >= 5s) ? 0 : min(attempt + 1, 5);
     }
 }

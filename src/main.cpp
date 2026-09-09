@@ -7,6 +7,7 @@
 
 #include "socket.hpp"
 #include "ts_queue.hpp"
+#include "config.hpp"
 
 int main()
 {
@@ -15,6 +16,8 @@ int main()
     sigaddset(&s, SIGINT);
     sigaddset(&s, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &s, nullptr);
+
+    Config cfg = config::parse_cfg("../config.ini");
 
     TSQueue<std::string> msg_q;
     std::vector<std::jthread> threads;
