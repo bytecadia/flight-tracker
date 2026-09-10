@@ -4,6 +4,7 @@
 #include <stop_token>
 #include <thread>
 #include <vector>
+#include <SQLiteCpp/SQLiteCpp.h>
 
 #include "socket.hpp"
 #include "ts_queue.hpp"
@@ -16,6 +17,8 @@ int main()
     sigaddset(&s, SIGINT);
     sigaddset(&s, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &s, nullptr);
+
+    SQLite::Database db("aircrafts.db", SQLite::OPEN_READONLY);
 
     Config cfg = parse_cfg("../config.ini");
 

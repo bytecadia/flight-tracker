@@ -23,7 +23,7 @@ bool set_timeout(int fd)
 
 int conn_sock(const char *host, const char *port)
 {
-    // ADSB feed , as a service string for getaddrinfo
+    // ADSB feed, as a service string for getaddrinfo
 
     // Hints to resolver what kind of address is needed
     struct addrinfo hints{};         // value-init to all zero
