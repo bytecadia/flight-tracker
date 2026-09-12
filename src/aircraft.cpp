@@ -20,21 +20,20 @@ std::optional<double> parse_dbl(const std::string &str)
 std::optional<std::string> parse_icao(const std::vector<std::string> &msg)
 {
     if (msg.size() != 22)
-        return nullopt;
+        return std::nullopt;
 
     if (msg[4].empty())
-        return nullopt;
+        return std::nullopt;
 
-    icao = msg[4];
-    return true;
+    return msg[4];
 }
 
-bool Aircraft::parse_msg(const std::vector<std::string> &msg)
+std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
 {
     last_seen = std::chrono::steady_clock::now();
 
-    if (!msg.size() != 22)
-        return nullopt;
+    if (msg.size() != 22)
+        return std::nullopt;
 
     std::optional<int> msg_type = parse_int(msg[1]);
 
@@ -110,13 +109,13 @@ double rads(double deg)
     return deg * (std::numbers::pi / 180);
 }
 
-double calc_distance(double lat1, double lon1, double lat2, double lon2)
+double Aircraft::calc_distance(double base_lat, double base_lon)
 {
-    double phi1 = rads(lat1);
-    double phi2 = rads(lat2);
+    double phi1 = rads(base_lat);
+    double phi2 = rads(*lat);
 
-    double lambda1 = rads(lon1);
-    double lambda2 = rads(lon2);
+    double lambda1 = rads(base_lon);
+    double lambda2 = rads(*lon);
 
     double sclr = std::cos((phi1 + phi2) / 2.0);
 

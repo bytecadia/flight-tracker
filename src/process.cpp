@@ -3,9 +3,11 @@
 #include <chrono>
 #include <string>
 #include <stop_token>
+#include <ranges>
 
 #include "ts_queue.hpp"
 #include "aircraft.hpp"
+#include "snapshot.hpp"
 
 using namespace std::chrono_literals;
 
@@ -15,10 +17,11 @@ std::vector<std::string> split(const std::string &msg)
 }
 
 void process(std::stop_token st,
-             TSQueue &msg_q,
-             TSQueue &enrich_q,
-             TSQueue &result_q,
-             Snapshot snapshot)
+             TSQueue<std::string> &msg_q,
+             TSQueue<std::vector<std::string>> &enrich_q,
+             TSQueue<std::vector<std::string>> &result_q,
+             Snapshot snapshot,
+             SQLite::Database db)
 {
     std::map<std::string, Aircraft> aircrafts;
     auto deadline = std::chrono::steady_clock::now() + 30s;
@@ -32,14 +35,15 @@ void process(std::stop_token st,
         // Process message
         if (msg)
         {
-            std::vector<std::string> fields = split(msg, ",");
+            std::vector<std::string> fields = split(*msg);
 
             std::optional<std::string> icao = parse_icao(fields);
             if (icao)
             {
-                auto [it, inserted] = aircrafts.try_emplace(icao, icao);
+                auto [it, inserted] = aircrafts.try_emplace(*icao, *icao);
 
                 it->second.parse_msg(fields);
+                it->second.lookup(db);
             }
         }
 
@@ -48,9 +52,9 @@ void process(std::stop_token st,
         if (now >= deadline)
         {
             // Clean stale aircraft
-            for (auto it = airacrafts.begin; it != aircrafts.end();)
+            for (auto it = aircrafts.begin(); it != aircrafts.end();)
             {
-                if (now - it->second.last_update >= 60s)
+                if (now - it->second.last_seen >= 60s)
                     it = aircrafts.erase(it);
                 else
                     ++it;
@@ -61,7 +65,7 @@ void process(std::stop_token st,
 
             // Select featured aircraft
             Aircraft *featured = &(aircrafts.begin()->second);
-            int closest = featured.distance;
+            double closest = featured->distance;
             for (auto &[icao, a] : aircrafts)
             {
                 if (a.distance < closest)
@@ -70,7 +74,7 @@ void process(std::stop_token st,
                     featured = &a;
                 }
             }
-            snapshot.write(*a);
+            snapshot.write(*featured);
             deadline = now + 30s;
         }
     }

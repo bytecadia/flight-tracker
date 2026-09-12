@@ -7,7 +7,8 @@
 
 #include <SQLiteCpp/SQLiteCpp.h>
 
-std::optional<std::string> Aircraft::parse_icao(const std::vector<std::string> &msg);
+std::optional<std::string> parse_icao(const std::vector<std::string> &msg);
+double rads(double deg);
 
 struct Aircraft
 {
@@ -51,7 +52,9 @@ struct Aircraft
     // Constructor that takes in just the ICAO and defaults the other fields
     explicit Aircraft(std::string icao);
 
-    bool parse_msg(const std::vector<std::string> &msg);
+    std::optional<bool> parse_msg(const std::vector<std::string> &msg);
 
     void lookup(SQLite::Database &db);
+
+    double calc_distance(double base_lat, double base_lon);
 };
