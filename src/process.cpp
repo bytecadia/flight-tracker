@@ -43,7 +43,8 @@ void process(std::stop_token st,
                 auto [it, inserted] = aircrafts.try_emplace(*icao, *icao);
 
                 it->second.parse_msg(fields);
-                it->second.lookup(db);
+                if (!it->second.looked_up)
+                    it->second.lookup(db);
             }
         }
 

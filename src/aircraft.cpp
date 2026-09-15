@@ -49,12 +49,14 @@ std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
         lat = parse_dbl(msg[14]);
         lon = parse_dbl(msg[15]);
         gnd = parse_int(msg[21]);
+        dist = calc_dist(lat, lon);
         break;
     case 3:
         alt = parse_int(msg[11]);
         lat = parse_dbl(msg[14]);
         lon = parse_dbl(msg[15]);
         gnd = parse_int(msg[21]);
+        dist = calc_dist(lat, lon);
         break;
     case 4:
         gs = parse_int(msg[12]);
@@ -98,10 +100,22 @@ void Aircraft::lookup(SQLite::Database &db)
     if (!query.executeStep())
         return;
 
-    // mfc = query.getColumn(0).getString();
-    // mdl = query.getColumn(1).getString();
-    // type = query.getColumn(2).getString();
-    // engine = query.getColumn(3).getString();
+    mfc = query.getColumn(0).getString();
+    mdl = query.getColumn(1).getString();
+    type = query.getColumn(2).getString();
+    eng = query.getColumn(3).getString();
+}
+
+std::string parse_arline(std::string cs)
+{
+    auto it = std::find_if(cs.begin(), cs.end(), [](unsigned char c)
+                           { return std::isdigit(c); });
+
+    if (it != cs.end())
+    {
+        std::size_t i = std::distance(cs.begin(), it);
+        return cs.substr(0, i + 1);
+    }
 }
 
 double rads(double deg)
@@ -109,7 +123,7 @@ double rads(double deg)
     return deg * (std::numbers::pi / 180);
 }
 
-double Aircraft::calc_distance(double base_lat, double base_lon)
+double Aircraft::calc_dist(double base_lat, double base_lon)
 {
     double phi1 = rads(base_lat);
     double phi2 = rads(*lat);
