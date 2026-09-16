@@ -61,6 +61,7 @@ void process(std::stop_token st,
                     ++it;
             }
 
+            deadline = now + 30s;
             if (aircrafts.empty()) // TODO: What should UI show here?
                 continue;
 
@@ -81,8 +82,6 @@ void process(std::stop_token st,
             }
             if (featured)
                 snapshot.write(*featured);
-
-            deadline = now + 30s;
         }
     }
 }

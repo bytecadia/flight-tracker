@@ -12,6 +12,7 @@ std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
         return std::nullopt;
 
     // TODO: Should these not change the value of field if parsing failed
+    //  Example of check `if (auto v = parse_num<int>(msg[11])) alt = v;`
     switch (parse_num<int>(msg[1]).value_or(-1))
     { // MSG type
     case 1:
