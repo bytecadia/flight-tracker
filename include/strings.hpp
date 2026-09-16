@@ -1,13 +1,14 @@
 #include <string>
+#include <charconv>
 
-inline std::optional<int> parse_int(const std::string &str)
+template <typename T>
+inline std::optional<T> parse_num(const std::string &str)
 {
-    return !str.empty() ? std::optional<int>(std::stoi(str)) : std::nullopt;
-}
-
-inline std::optional<double> parse_dbl(const std::string &str)
-{
-    return !str.empty() ? std::optional<double>(std::stod(str)) : std::nullopt;
+    T value{};
+    auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), value);
+    if (ec != std::errc{})
+        return std::nullopt;
+    return value;
 }
 
 inline std::vector<std::string> split(const std::string &str)
@@ -23,7 +24,7 @@ inline std::string parse_chars(const std::string &str)
     if (it != str.end())
     {
         std::size_t i = std::distance(str.begin(), it);
-        return str.substr(0, i + 1);
+        return str.substr(0, i);
     }
     return "";
 }

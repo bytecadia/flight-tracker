@@ -2,16 +2,17 @@
 
 #include "strings.hpp"
 
+// TODO: Fix the old member function declaration
 inline void lookup_aircraft(SQLite::Database &db)
 {
     // TODO:: What more to add?
     SQLite::Statement query(db,
-                            "SELECT"
-                            "manufacturer,"
-                            "model,"
-                            "type_aircraft,"
-                            "type_engine"
-                            "FROM aircrafts"
+                            "SELECT "
+                            "manufacturer, "
+                            "model, "
+                            "type_aircraft, "
+                            "type_engine "
+                            "FROM aircrafts "
                             "WHERE icao = ?;");
 
     query.bind(1, icao);
@@ -35,8 +36,9 @@ inline std::string lookup_airline(SQLite::Database &db, std::string callsign)
         return "";
 
     SQLite::Statement query(db,
-                            "SELECT"
-                            "name"
+                            "SELECT "
+                            "name "
+                            "FROM airlines "
                             "WHERE icao = ?;");
 
     query.bind(1, code);

@@ -1,11 +1,16 @@
+#pragma once
+
 #include <mutex>
+#include <optional>
 
 #include "aircraft.hpp"
 
 class Snapshot
 {
 private:
-    Aircraft _a;
+    // optional because Aircraft has no default ctor, and because "no aircraft
+    // selected yet" is a real state at startup that the reader must handle
+    std::optional<Aircraft> _a;
     mutable std::mutex _mtx;
 
 public:
@@ -15,7 +20,7 @@ public:
         _a = std::move(a);
     }
 
-    Aircraft read() const
+    std::optional<Aircraft> read() const
     {
         std::lock_guard<std::mutex> lock(_mtx);
         return _a;

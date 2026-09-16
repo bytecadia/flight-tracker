@@ -9,6 +9,8 @@
 #include "socket.hpp"
 #include "queue.hpp"
 #include "config.hpp"
+#include "process.hpp"
+#include "snapshot.hpp"
 
 int main()
 {
@@ -23,11 +25,17 @@ int main()
     Config cfg = parse_cfg("../config.ini");
 
     TSQueue<std::string> msg_q;
+    TSQueue<std::vector<std::string>> enrich_q;
+    TSQueue<std::vector<std::string>> result_q;
+    Snapshot snapshot;
+
     std::vector<std::jthread> threads;
 
     std::stop_source stp_src;
     threads.emplace_back(socket_reader, stp_src.get_token(), ref(msg_q), cfg); // config read only
-    // threads.emplace_back(proccess, stp_src.get_token());
+    threads.emplace_back(process, stp_src.get_token(),
+                         std::ref(msg_q), std::ref(enrich_q), std::ref(result_q),
+                         std::ref(snapshot), std::ref(db), std::cref(cfg));
     // threads.emplace_back(enrich, stp_src.get_token());
     // threads.emplace_back(render, stp_src.get_token());
 
