@@ -7,7 +7,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 
 #include "socket.hpp"
-#include "ts_queue.hpp"
+#include "queue.hpp"
 #include "config.hpp"
 
 int main()

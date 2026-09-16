@@ -4,24 +4,24 @@
 #include <string>
 #include <stop_token>
 #include <ranges>
+#include <SQLiteCpp/SQLiteCpp.h>
 
-#include "ts_queue.hpp"
+#include "queue.hpp"
 #include "aircraft.hpp"
 #include "snapshot.hpp"
+#include "strings.hpp"
+#include "config.hpp"
+#include "geometry.hpp"
 
 using namespace std::chrono_literals;
-
-std::vector<std::string> split(const std::string &msg)
-{
-    return msg | std::views::split(',') | std::ranges::to<std::vector<std::string>>();
-}
 
 void process(std::stop_token st,
              TSQueue<std::string> &msg_q,
              TSQueue<std::vector<std::string>> &enrich_q,
              TSQueue<std::vector<std::string>> &result_q,
              Snapshot snapshot,
-             SQLite::Database db)
+             SQLite::Database db,
+             Config cfg)
 {
     std::map<std::string, Aircraft> aircrafts;
     auto deadline = std::chrono::steady_clock::now() + 30s;
@@ -43,11 +43,7 @@ void process(std::stop_token st,
                 auto [it, inserted] = aircrafts.try_emplace(*icao, *icao);
 
                 it->second.parse_msg(fields);
-                if (!it->second.processed)
-                {
-                    it->second.lookup_aircraft(db);
-                    it->second.processed = true;
-                }
+                it->second.last_seen = std::chrono::steady_clock::now();
             }
 
             // Maintenance
@@ -63,17 +59,21 @@ void process(std::stop_token st,
                         ++it;
                 }
 
-                if (aircrafts.empty())
+                if (aircrafts.empty()) // TODO: What should UI show here?
                     return;
 
                 // Select featured aircraft
-                Aircraft *featured = &(aircrafts.begin()->second);
-                double closest = featured->dist;
+                Aircraft *featured = nullptr;
+                double closest = 0;
                 for (auto &[icao, a] : aircrafts)
                 {
-                    if (a.dist < closest)
+                    if (!a.lat || !a.lon)
+                        continue;
+
+                    double distance = calc_dist(cfg.lat, cfg.lon, *a.lat, *a.lon);
+                    if (!featured || distance < closest)
                     {
-                        closest = a.dist;
+                        closest = distance;
                         featured = &a;
                     }
                 }
