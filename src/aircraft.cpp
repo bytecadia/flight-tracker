@@ -35,8 +35,6 @@ std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
     if (msg.size() != 22)
         return std::nullopt;
 
-    std::optional<int> msg_type = parse_int(msg[1]);
-
     switch (parse_int(msg[1]).value_or(-1))
     { // MSG type
     case 1:
@@ -49,14 +47,16 @@ std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
         lat = parse_dbl(msg[14]);
         lon = parse_dbl(msg[15]);
         gnd = parse_int(msg[21]);
-        dist = calc_dist(lat, lon);
+        if (lat && lon)
+            dist = calc_dist(*lat, *lon);
         break;
     case 3:
         alt = parse_int(msg[11]);
         lat = parse_dbl(msg[14]);
         lon = parse_dbl(msg[15]);
         gnd = parse_int(msg[21]);
-        dist = calc_dist(lat, lon);
+        if (lat && lon)
+            dist = calc_dist(*lat, *lon);
         break;
     case 4:
         gs = parse_int(msg[12]);
@@ -83,7 +83,32 @@ std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
     return true;
 }
 
-void Aircraft::lookup(SQLite::Database &db)
+Aircraft::Type getType(int type, int engine)
+{
+    if (type == 6) // Rotocraft
+        return Aircraft::Type::Heli;
+
+    if (type == 4 || // Fixed-wing, singe-engine
+        type == 5)   // Fixed-wing, multi-engine
+    {
+        if (engine == 4 || // Turbojet
+            engine == 5)   // Turbofan
+            return Aircraft::Type::Jet;
+
+        if (engine == 1 ||  // Reciprocating
+            engine == 2 ||  // Turboprop
+            engine == 7 ||  // 2-cycle
+            engine == 8 ||  // 4-cycle
+            engine == 10 || // Electric
+            engine == 11)   // Rotary
+            return Aircraft::Type::Prop;
+    }
+
+    return Aircraft::Type::Unk;
+}
+
+// TODO: Not sure if this should be a member function
+void Aircraft::lookup_aircraft(SQLite::Database &db)
 {
     // TODO:: What more to add?
     SQLite::Statement query(db,
@@ -102,11 +127,13 @@ void Aircraft::lookup(SQLite::Database &db)
 
     mfc = query.getColumn(0).getString();
     mdl = query.getColumn(1).getString();
-    type = query.getColumn(2).getString();
-    eng = query.getColumn(3).getString();
+
+    int type_aircraft = query.getColumn(2).getInt();
+    int type_engine = query.getColumn(3).getInt();
+    type = getType(type_aircraft, type_engine);
 }
 
-std::string parse_arline(std::string cs)
+std::string parse_airline(std::string cs)
 {
     auto it = std::find_if(cs.begin(), cs.end(), [](unsigned char c)
                            { return std::isdigit(c); });
@@ -116,6 +143,28 @@ std::string parse_arline(std::string cs)
         std::size_t i = std::distance(cs.begin(), it);
         return cs.substr(0, i + 1);
     }
+    return "";
+}
+
+// TODO: This seems like it should be use by the UI
+std::string lookup_airline(SQLite::Database &db, std::string callsign)
+{
+    std::string code = parse_airline(callsign);
+
+    if (code.empty())
+        return "";
+
+    SQLite::Statement query(db,
+                            "SELECT"
+                            "name"
+                            "WHERE icao = ?;");
+
+    query.bind(1, code);
+
+    if (!query.executeStep())
+        return "";
+
+    return query.getColumn(0).getString();
 }
 
 double rads(double deg)

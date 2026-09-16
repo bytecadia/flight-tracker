@@ -43,40 +43,43 @@ void process(std::stop_token st,
                 auto [it, inserted] = aircrafts.try_emplace(*icao, *icao);
 
                 it->second.parse_msg(fields);
-                if (!it->second.looked_up)
-                    it->second.lookup(db);
-            }
-        }
-
-        // Maintenance
-        auto now = std::chrono::steady_clock::now();
-        if (now >= deadline)
-        {
-            // Clean stale aircraft
-            for (auto it = aircrafts.begin(); it != aircrafts.end();)
-            {
-                if (now - it->second.last_seen >= 60s)
-                    it = aircrafts.erase(it);
-                else
-                    ++it;
-            }
-
-            if (aircrafts.empty())
-                return;
-
-            // Select featured aircraft
-            Aircraft *featured = &(aircrafts.begin()->second);
-            double closest = featured->distance;
-            for (auto &[icao, a] : aircrafts)
-            {
-                if (a.distance < closest)
+                if (!it->second.processed)
                 {
-                    closest = a.distance;
-                    featured = &a;
+                    it->second.lookup_aircraft(db);
+                    it->second.processed = true;
                 }
             }
-            snapshot.write(*featured);
-            deadline = now + 30s;
+
+            // Maintenance
+            auto now = std::chrono::steady_clock::now();
+            if (now >= deadline)
+            {
+                // Clean stale aircraft
+                for (auto it = aircrafts.begin(); it != aircrafts.end();)
+                {
+                    if (now - it->second.last_seen >= 60s)
+                        it = aircrafts.erase(it);
+                    else
+                        ++it;
+                }
+
+                if (aircrafts.empty())
+                    return;
+
+                // Select featured aircraft
+                Aircraft *featured = &(aircrafts.begin()->second);
+                double closest = featured->dist;
+                for (auto &[icao, a] : aircrafts)
+                {
+                    if (a.dist < closest)
+                    {
+                        closest = a.dist;
+                        featured = &a;
+                    }
+                }
+                snapshot.write(*featured);
+                deadline = now + 30s;
+            }
         }
     }
 }

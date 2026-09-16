@@ -12,18 +12,13 @@ double rads(double deg);
 
 struct Aircraft
 {
-    // enum class Operation
-    // {
-    //     Com,
-    //     Non
-    // };
-
-    // enum class Type
-    // {
-    //     Prop,
-    //     Jet,
-    //     Heli
-    // };
+    enum class Type
+    {
+        Prop,
+        Jet,
+        Heli,
+        Unk
+    };
 
     // SBS Data - Required
     std::string icao; // Field 4 - all messages
@@ -37,27 +32,24 @@ struct Aircraft
     std::optional<double> lon; // Field 16 - MSG 2,3
     std::optional<bool> gnd;   // Field 22 - MSG 2,3,5,6,7,8
 
-    // Derived Data
-    bool has_logo = false;
-    double dist = 0.0;
-
     // Database Data
-    bool looked_up;
+    bool processed;
     std::string mfc;
     std::string mdl;
-    std::string type;
-    std::string eng;
+    // TODO: Should airline be here
 
+    // Derived Data
     // Operation op = Operation::Non;
-    // Type type = Type::Prop;
+    double dist = 0.0;
+    Type type = Type::Unk;
 
     std::chrono::steady_clock::time_point last_seen;
 
     // Constructor that takes in just the ICAO and defaults the other fields
     explicit Aircraft(std::string icao);
 
-    // Methods
+    // Methods TODO: Do these make sense
     std::optional<bool> parse_msg(const std::vector<std::string> &msg);
-    void lookup(SQLite::Database &db);
+    void lookup_aircraft(SQLite::Database &db);
     double calc_dist(double base_lat, double base_lon);
 };
