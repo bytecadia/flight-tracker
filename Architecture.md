@@ -722,6 +722,45 @@ enum class Theme {
     Non
 };
 
+struct DisplayData
+{
+    std::string header; // Airline or manufacturer - this is why database is needed
+    std::string img_path;
+    std::string callsign;
+    int alt;
+    int speed;
+    int distance;
+    int bearing;
+    int track;
+
+    // TODO: Need to add check to process.cpp to ensure below is true
+    DisplayData(SQLite::Database &db, const Aircraft &a,
+                const Config &cfg) // Assumes aircraft has all info
+    {
+        std::string airline = lookup_airline(db, a.callsign);
+        AircraftInfo info = lookup_aircraft(db, a.icao);
+
+        img_path = std::format("assets/sprites/{}", to_string(info.type));
+
+        if (!airline.empty())
+        {
+            header = airline;
+            auto try_path = std::format("assets/airlines/{}", airline); // Hardcoded for now
+            if (std::filesystem::exists(try_path))
+                img_path = try_path;
+        }
+        else
+            header = std::format("{} {}", info.mfc, info.mdl);
+
+        callsign = a.callsign;
+        alt = *a.alt;
+        speed = *a.gs;
+        distance = static_cast<int>(calc_dist(cfg.lat, cfg.lon, *a.lat, *a.lon));
+        track = *a.trk;
+        bearing = static_cast<int>(calc_bearing(cfg.lat, cfg.lon, *a.lat, *a.lon));
+    }
+};
+
 struct AircraftDisplay {
     magick::image logo;
     std::vector<Row> rows;
