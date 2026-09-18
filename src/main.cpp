@@ -5,6 +5,7 @@
 #include <thread>
 #include <vector>
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <spdlog/spdlog.h>
 
 #include "socket.hpp"
 #include "queue.hpp"
@@ -20,7 +21,18 @@ int main()
     sigaddset(&s, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &s, nullptr);
 
-    SQLite::Database db("aircrafts.db", SQLite::OPEN_READONLY);
+
+    std::optional<SQLite::Database> db;
+    try {
+        db.emplace("aircraft.db", SQLite::OPEN_READONLY);
+    }
+    catch (const SQLite::Exception &e)
+    {
+        spdlog::error("Database 'aircraft.db' failed to open with error {}",  e.what()); // Hardcoded for now
+    }
+
+    if (!db) 
+        return 0;
 
     Config cfg = parse_cfg("../config.ini");
 
@@ -32,10 +44,10 @@ int main()
     std::vector<std::jthread> threads;
 
     std::stop_source stp_src;
-    threads.emplace_back(socket_reader, stp_src.get_token(), ref(msg_q), cfg); // config read only
+    threads.emplace_back(socket_reader, stp_src.get_token(), std::ref(msg_q), cfg); // config read only
     threads.emplace_back(process, stp_src.get_token(),
                          std::ref(msg_q), std::ref(enrich_q), std::ref(result_q),
-                         std::ref(snapshot), std::ref(db), std::cref(cfg));
+                         std::ref(snapshot), std::ref(*db), std::cref(cfg));
     // threads.emplace_back(enrich, stp_src.get_token());
     // threads.emplace_back(render, stp_src.get_token());
 

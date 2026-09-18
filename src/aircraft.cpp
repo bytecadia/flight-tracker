@@ -1,19 +1,25 @@
 #include <ranges>
 #include <utility>
+#include <spdlog/spdlog.h>
+#include <spdlog/fmt/ranges.h>
 
 #include "aircraft.hpp"
 #include "strings.hpp"
 
 Aircraft::Aircraft(std::string icao) : icao(icao) {};
 
-std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
+bool Aircraft::parse_msg(const std::vector<std::string> &msg)
 {
     if (msg.size() != 22) // TODO: More checks for robustness?
-        return std::nullopt;
+    {
+        spdlog::error("Failed to parse message (wrong size) with message '{}'", fmt::join(msg, ", "));
+        return false;
+    }
 
     // TODO: Should these not change the value of field if parsing failed
-    //  Example of check `if (auto v = parse_num<int>(msg[11])) alt = v;`
-    switch (parse_num<int>(msg[1]).value_or(-1))
+    // Example of check `if (auto v = parse_num<int>(msg[11])) alt = v;`
+    int type = parse_num<int>(msg[1]).value_or(-1);
+    switch (type)
     { // MSG type
     case 1:
         callsign = msg[10];
@@ -52,6 +58,7 @@ std::optional<bool> Aircraft::parse_msg(const std::vector<std::string> &msg)
         gnd = parse_num<int>(msg[21]);
         break;
     default:
+        spdlog::error("Failed to parse message (invalid message type) with type '{}'", type);
         return false;
     }
     return true;

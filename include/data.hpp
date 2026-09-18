@@ -1,31 +1,49 @@
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <spdlog/spdlog.h>
 
 #include "strings.hpp"
 
-// TODO: Fix the old member function declaration
-inline void lookup_aircraft(SQLite::Database &db)
+struct AircraftInfo {
+    std::string mfc;
+    std::string mdl;
+    AircraftType type;
+}
+
+// TODO: Should this be returning optional, does it make sense for partials here
+inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
 {
-    // TODO:: What more to add?
-    SQLite::Statement query(db,
-                            "SELECT "
-                            "manufacturer, "
-                            "model, "
-                            "type_aircraft, "
-                            "type_engine "
-                            "FROM aircrafts "
-                            "WHERE icao = ?;");
+    try {
+        // TODO:: What more to add?
+        SQLite::Statement query(db,
+                                "SELECT "
+                                "manufacturer, "
+                                "model, "
+                                "type_aircraft, "
+                                "type_engine "
+                                "FROM aircrafts "
+                                "WHERE icao = ?;");
 
-    query.bind(1, icao);
+        query.bind(1, icao);
 
-    if (!query.executeStep())
-        return;
+        if (!query.executeStep())
+            return;
 
-    mfc = query.getColumn(0).getString();
-    mdl = query.getColumn(1).getString();
+        AircraftInfo info;
+        info.mfc = query.getColumn(0).getString();
+        info.mdl = query.getColumn(1).getString();
 
-    int type_aircraft = query.getColumn(2).getInt();
-    int type_engine = query.getColumn(3).getInt();
-    type = getType(type_aircraft, type_engine);
+        int type_aircraft = query.getColumn(2).getInt();
+        int type_engine = query.getColumn(3).getInt();
+
+        info.type = getType(type_aircraft, type_engine);
+
+        return info;
+    } 
+    catch 
+    {
+        spdlog::error("Lookup aircraft failed for ICAO: '{}' with error '{}'",
+                icao, code, e.what());
+    }
 }
 
 inline std::string lookup_airline(SQLite::Database &db, std::string callsign)
@@ -35,16 +53,23 @@ inline std::string lookup_airline(SQLite::Database &db, std::string callsign)
     if (code.empty())
         return "";
 
-    SQLite::Statement query(db,
-                            "SELECT "
-                            "name "
-                            "FROM airlines "
-                            "WHERE icao = ?;");
+    try
+    {
+        SQLite::Statement query(db,
+                                "SELECT "
+                                "name "
+                                "FROM airlines "
+                                "WHERE icao = ?;");
 
-    query.bind(1, code);
+        query.bind(1, code);
 
-    if (!query.executeStep())
-        return "";
+        if (!query.executeStep())
+            return "";
 
-    return query.getColumn(0).getString();
+        return query.getColumn(0).getString();
+    }
+    catch (const SQLite::Exception &e)
+    {
+        spdlog::error("Lookup airline failed for callsign '{}' and ICAO '{}' with error '{}'", callsign, code, e.what());
+    }
 }

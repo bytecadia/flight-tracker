@@ -31,21 +31,31 @@ int conn_sock(const char *host, const char *port)
     hints.ai_socktype = SOCK_STREAM; // TCP
 
     struct addrinfo *res = nullptr;                 // resolver outputs linked list (free with freeaddrinfo)
-    if (getaddrinfo(host, port, &hints, &res) != 0) // 0 if success
+    int err = getaddrinfo(host, port, &hints, &res) != 0;
+    if (err != 0) // 0 if success
+    {
+        spdlog::error("Failed to resolve '{}:{}' with error {}", host, port, errno);
         return -1;
+    }
 
     int fd = -1;
     for (addrinfo *p = res; p != nullptr; p = p->ai_next)
     {
         fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol); // AF_INET or AF_INET6 (Internet), STREAM, TCP
+
         if (fd < 0)
+        {
+            spdlog::error("Failed to create socket (family: {}, type: {}, protocol: {}) with fd '{}'", p->ai_family, p->ai_socktype, p->ai_protocol, fd);
             continue; // Try next
+        }
 
-        if (set_timeout(fd) && connect(fd, p->ai_addr, p->ai_addrlen) == 0) // fd, binary address, length
-            break;
-
-        close(fd);
-        fd = -1;
+        if (!set_timeout(fd) ||  connect(fd, p->ai_addr, p->ai_addrlen) != 0) // fd, binary address, length
+        {
+            spdlog::error("Failed to connect to '{}:{}' with error '{}'", host, port, errno);
+            close(fd);
+            fd = -1;
+            continue;
+        }
     }
 
     freeaddrinfo(res); // Free linked list
@@ -59,19 +69,20 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
     char chunk[4096]; // common chunk size
 
     // Outer loop to read chunk message and add to buffer
-    bool resync = false;
+    bool resync = false; // Handle partial messages when buffer exceeds max size
     while (!st.stop_requested())
     {
         ssize_t n = recv(fd, chunk, sizeof(chunk), 0); // receive bytes from socket and save into   chuck with default behavior (flags = 0)
 
-        if (n == 0)
-            break; // connection closed
+        if (n == 0) // Means peer performed a shutdown
+            break; 
 
         if (n < 0)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) // Timeout try agin (need so that stop request check can be reached)
                 continue;
 
+            spdlog::error("recv() failed with error {}", errno);
             break;
         }
 

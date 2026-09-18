@@ -24,5 +24,5 @@ struct Aircraft
     // Constructor that takes in just the ICAO and defaults the other fields
     explicit Aircraft(std::string icao);
 
-    std::optional<bool> parse_msg(const std::vector<std::string> &msg);
+    bool parse_msg(const std::vector<std::string> &msg);
 };

@@ -43,8 +43,10 @@ void process(std::stop_token st,
             {
                 auto [it, inserted] = aircrafts.try_emplace(icao, icao);
 
-                it->second.parse_msg(fields);
-                it->second.last_seen = std::chrono::steady_clock::now();
+                if (it->second.parse_msg(fields))
+                {
+                    it->second.last_seen = std::chrono::steady_clock::now();
+                }
             }
         }
 
