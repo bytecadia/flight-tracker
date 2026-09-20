@@ -1,18 +1,24 @@
+#pragma once
+
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <spdlog/spdlog.h>
 
 #include "strings.hpp"
+#include "parser.hpp"
+// TODO: Bad to just be including this for the AircraftType?
 
-struct AircraftInfo {
+struct AircraftInfo
+{
     std::string mfc;
     std::string mdl;
     AircraftType type;
-}
+};
 
 // TODO: Should this be returning optional, does it make sense for partials here
 inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
 {
-    try {
+    try
+    {
         // TODO:: What more to add?
         SQLite::Statement query(db,
                                 "SELECT "
@@ -26,7 +32,7 @@ inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
         query.bind(1, icao);
 
         if (!query.executeStep())
-            return;
+            return AircraftInfo{};
 
         AircraftInfo info;
         info.mfc = query.getColumn(0).getString();
@@ -35,15 +41,17 @@ inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
         int type_aircraft = query.getColumn(2).getInt();
         int type_engine = query.getColumn(3).getInt();
 
-        info.type = getType(type_aircraft, type_engine);
+        info.type = get_type(type_aircraft, type_engine);
 
         return info;
-    } 
-    catch 
+    }
+    catch (const std::exception &e)
     {
         spdlog::error("Lookup aircraft failed for ICAO: '{}' with error '{}'",
-                icao, code, e.what());
+                      icao, e.what());
     }
+
+    return AircraftInfo{}; // TODO: Hacking here see todo above
 }
 
 inline std::string lookup_airline(SQLite::Database &db, std::string callsign)
@@ -72,4 +80,5 @@ inline std::string lookup_airline(SQLite::Database &db, std::string callsign)
     {
         spdlog::error("Lookup airline failed for callsign '{}' and ICAO '{}' with error '{}'", callsign, code, e.what());
     }
+    return "";
 }

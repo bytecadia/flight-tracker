@@ -6,6 +6,27 @@ inline double rads(double deg)
     return deg * (std::numbers::pi / 180);
 }
 
+// Initial bearing (forward azimuth) from base to target, in degrees, 0..360
+inline double calc_bearing(double base_lat, double base_lon,
+                           double targ_lat, double targ_lon)
+{
+    double phi1 = rads(base_lat);
+    double phi2 = rads(targ_lat);
+
+    double lambda1 = rads(base_lon);
+    double lambda2 = rads(targ_lon);
+    double delta_lambda = lambda2 - lambda1;
+
+    double y = std::sin(delta_lambda) * std::cos(phi2);
+    double x = std::cos(phi1) * std::sin(phi2) -
+               std::sin(phi1) * std::cos(phi2) * std::cos(delta_lambda);
+
+    double theta = std::atan2(y, x); // radians, range -pi..pi
+    double degrees = theta * 180.0 / std::numbers::pi;
+
+    return std::fmod(degrees + 360.0, 360.0); // normalize to 0..360
+}
+
 // Equirectangular approximation
 inline double calc_dist(double base_lat, double base_lon,
                         double targ_lat, double targ_lon)

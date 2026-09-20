@@ -27,10 +27,17 @@ FetchContent_Declare(
     GIT_TAG r62
 )
 
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+)
+
 FetchContent_MakeAvailable(
     spdlog
     sqlitecpp
     inih
+    stb
 )
 
 add_executable(
@@ -39,7 +46,7 @@ add_executable(
     src/socket.cpp
     src/aircraft.cpp
     src/process.cpp
-
+    src/display.cpp
 )
 
 add_library(INIReader STATIC
@@ -55,6 +62,7 @@ target_include_directories(INIReader PUBLIC
 target_include_directories( flight_cast PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${inih_SOURCE_DIR}/cpp
+        ${stb_SOURCE_DIR}
 )
 
 target_link_libraries(flight_cast PRIVATE

@@ -964,18 +964,38 @@ void draw(const std::vector<Placement>& positions, Canvas *c){
 ```
 
 ``` c++
-// From image-example.cc
-void draw_image(Canvas *c, int x, int y, const Magick::Image &image) {
-    for (size_t y = 0; y < image.rows(); ++y) {
-    for (size_t x = 0; x < image.columns(); ++x) {
-      const Magick::Color &c = image.pixelColor(x, y);
-      if (c.alphaQuantum() < 256) {
-        canvas->SetPixel(x + offset_x, y + offset_y,
-                         ScaleQuantumToChar(c.redQuantum()),
-                         ScaleQuantumToChar(c.greenQuantum()),
-                         ScaleQuantumToChar(c.blueQuantum()));
-      }
+struct Image {
+    int w = o;
+    int h = 0;
+    std::vector<unsigned char> pixels;
+}
+
+std::optional<Image> load_image(const std::string &path, int target_h){
+    int w, h, channels;
+    unsigned char *decoded = stbi_load(path.c_str(), &w, &h, &channels, 4);
+
+    if (!decoded) {
+        spdlog::error("Unable to load image at path '{}'", path);
+        return std::nullopt;
     }
+    int target_w = w * target_h / w; // Calculate new width
+    Image img;
+    img.w = target_w;
+    img.h = target_h;
+    img.pixels.resize(target_w * target_h * 4);
+
+    stbir_resize_uint8*_srgb(decoded, w, h, 0, img.pixels.data(), target_w, target_h, 0, STBIR_RGBA);
+
+    stbi_image_free(decoded);
+    return img;
+}
+
+void draw_image(Canvas *c, int x, int y, Image img) {
+    for (size_t iy = 0; iy < img.h; ++y) {
+    for (size_t ix = 0; ix < img.w; ++x) {
+      const unsigned char *px = &img.pixels[(y * img.w + x) * 4];
+      if (px[3] > 0)
+        c->SetPixel(x + ix, y +iy, px[0], px[1], px[2]);
   }
 }
 

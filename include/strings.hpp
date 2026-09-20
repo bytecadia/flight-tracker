@@ -1,5 +1,11 @@
+#pragma once
+
 #include <string>
 #include <charconv>
+#include <ranges>
+#include <vector>
+#include <optional>
+#include <algorithm>
 
 template <typename T>
 inline std::optional<T> parse_num(const std::string &str)
