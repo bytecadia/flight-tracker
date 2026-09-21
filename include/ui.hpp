@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include "graphics.h"
 
 // TODO: These are for image logic only
 #include <optional>
@@ -9,22 +10,11 @@
 #include "stb_image.h"
 #include "stb_image_resize2.h"
 
-struct Font
-{
-    int h;
-};
-
-struct Color
-{
-    uint8_t r, g, b;
-    Color(uint8_t r, uint8_t g, uint8_t b) : r(r), g(g), b(b) {}
-};
-
 struct Text
 {
     const std::string items;
-    const Font &font;
-    const Color &color;
+    const rgb_matrix::Font &font;
+    const rgb_matrix::Color &color;
 };
 
 enum class Mode
@@ -114,7 +104,7 @@ load_image(const std::string &path, int target_h)
     return img;
 }
 
-void draw_image(Canvas *c, int x, int y, Image img)
+void draw_image(rgb_matrix::Canvas *c, int x, int y, Image img)
 {
     for (size_t iy = 0; iy < img.h; ++iy)
     {

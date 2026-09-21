@@ -8,6 +8,7 @@
 #include "aircraft.hpp"
 #include "colors.hpp"
 #include "strings.hpp"
+#include "graphics.h"
 
 inline std::string to_str(AircraftType type)
 {
@@ -77,10 +78,12 @@ struct DisplayLayout
     std::vector<Row> rows;
     Rect content;
     int row_gap;
+    int img_span;
 
     DisplayLayout(const DisplayData &data,
-                  const Font sml,
-                  const Font med, const Font lrg, int x, int y, int w, int h, int padding, int row_gap) : content(x, y, w, h), row_gap(row_gap)
+                  const rgb_matrix::Font sml,
+                  const rgb_matrix::Font med, const rgb_matrix::Font lrg, int x, int y, int w, int h, int padding, int row_gap, int img_span)
+        : content(x, y, w, h), row_gap(row_gap), img_span(img_span)
     {
         rows.push_back(Row{Mode::Scroll{Element{Mode::Scroll, 0, {Text{data.header, lrg, RED}}}}, 0});
         rows.push_back(Row{Mode::Fit{Element{Mode::Scroll, 0, {Text{data.callsign, lrg, RED}}}}, 0});
@@ -104,11 +107,11 @@ std::vector<Position> layout(const DisplayLayout &disp, int64_t time, Image img)
     const int y4 = disp.content.btm(); // Anchor to bottom of frame
     const int y3 = y4 + disp.rows[4].h + disp.row_gap;
 
-    int x = disp.frame.left();
-    const int x1 = (1 <= disp.logo_span) ? x + img.h : x;
-    const int x2 = (2 <= disp.logo_span) ? x + img.h : x;
-    const int x3 = (3 <= disp.logo_span) ? x + img.h : x;
-    const int x4 = (4 <= disp.logo_span) ? x + img.h : x;
+    int x = disp.content.lft();
+    const int x1 = (1 <= disp.img_span) ? x + img.h : x;
+    const int x2 = (2 <= disp.img_span) ? x + img.h : x;
+    const int x3 = (3 <= disp.img_span) ? x + img.h : x;
+    const int x4 = (4 <= disp.img_span) ? x + img.h : x;
 
     std::vector<Position> pos;
     pos.push_back(lay_row(disp.rows[1], x1, y1));
@@ -117,6 +120,42 @@ std::vector<Position> layout(const DisplayLayout &disp, int64_t time, Image img)
     pos.push_back(lay_row(disp.rows[4], x4, y4));
 
     return pos;
+}
+
+int msr(const Text &t)
+{
+    return MeasureText(t.font, t.items.c_str(), 0);
+}
+
+template <typename T>
+int msr(const T &t)
+{
+    int w = 0;
+    const size_t n = t.items.size();
+    for (size_t i = 0; i < n; i++)
+        w += msr(t.items[i]);
+    if (i + 1 < t.items.size())
+        w += t.gap;
+    return w;
+}
+
+std::vector<Position> lay_elmnt(int x, int y, int &w, int gap,
+                                Element &elmnt)
+{
+    int start = x;
+    std::vector<Position> pos;
+    for (size_t i = 0; i < elmnt.items.size(); i++)
+    {
+        Text itm = elmnt.items[i];
+        Position np{itm, x, y};
+
+        x += msr(itm);
+        if (i < elmnt.items.size() - 1)
+            x += gap;
+
+        pos.push_back(np);
+    }
+    w = x - start;
 }
 
 std::vector<Position> lay_row(int x, int y, int r,
@@ -130,7 +169,7 @@ std::vector<Position> lay_row(int x, int y, int r,
     {
         int w;
         Element elmnt = row.items[i];
-        std::vector<Position> np = lay_elmnt(x, y, &w, row.gap, elmnt);
+        std::vector<Position> np = lay_elmnt(x, y, w, row.gap, elmnt);
 
         if (x + w > r)
         {
@@ -140,24 +179,26 @@ std::vector<Position> lay_row(int x, int y, int r,
                 return pos;
 
             case Mode::Clip:
-                pos.push_back(np);
+                pos.insert(pos.end(), np.begin(), np.end());
                 return pos;
 
-            case Mode::scroll:
+            case Mode::Scroll:
                 std::vector<Element> rest(row.items.begin() + i, row.items.end());
-                pos.push_back(np);
-                x = scroll_placement(start, x, Row{rest, row.gap, row.mode});
-                pos.push_back(lay_elmnt(x, y, &w, row.gap, elmnt));
+                pos.insert(pos.end(), np.begin(), np.end());
+                x = scrl_plcmnt(start, x, Row{rest, row.gap, row.mode}); // Functin signature mismatch
+                std::vector<Position> roll_over = lay_elmnt(x, y, w, row.gap, elmnt);
+                pos.insert(pos.end(), roll_over.begin(), roll_over.end());
                 x += w;
                 continue;
             }
         }
 
-        pos.push_back(np);
+        pos.insert(pos.end(), np.begin(), np.end());
         x += w;
     }
 }
 
+// TODO: What on earth was I doing here
 int scrl_plcmnt(int strt, int l, int r,
                 int scrl_gap, int pps,
                 int64_t time,
@@ -166,50 +207,13 @@ int scrl_plcmnt(int strt, int l, int r,
 
     int scrl_ofst = time * (pps / 1000) % (r - l);
     strt += scrl_ofst;
-    int w = msr_row(rest);
+    int w = msr(rest);
     int r = strt + w - r;
     int offset = w - leftover;
-    int max_x = start - w - scrl_gap;
+    int max_x = strt - w - scrl_gap;
 
     if (l < max_x)
         return l - offset;
 
     return max_x - offset;
-}
-
-int msr(const std::string &text)
-{
-    return MeasureText(text.c_str());
-}
-
-template <typename T>
-int msr(const T &t)
-{
-    int w = 0;
-    const size_t n = t.items.size();
-    for (size_t i = 0; i < n; i++)
-        w += msr(t.items[i]);
-    if (i + 1 < t.items.size())
-        w += t.gap;
-}
-return w;
-}
-
-std::vector<Position> lay_elmnt(int x, int y, int &w, int gap,
-                                Element &elmnt)
-{
-    int start = x;
-    std::vector<Position> pos;
-    for (size_t i = 0; i < elmnt.items.size(); i++)
-    {
-        Text itm = elmnt.items[i];
-        Position np{itm, x, y};
-
-        x += MeasureText(itm.value, itm.font);
-        if (i < elmnt.items.size() - 1)
-            x += gap;
-
-        pos.push_back(np);
-    }
-    w = x - start;
 }

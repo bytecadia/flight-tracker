@@ -70,3 +70,26 @@ target_link_libraries(flight_cast PRIVATE
     SQLiteCpp
     INIReader
 )
+
+set(LEDMATRIX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix)
+
+if (APPLE)
+    add_library(ledmatrix_graphics STATIC
+        ${LEDMATRIX_DIR}/lib/bdf-font.cc
+        ${LEDMATRIX_DIR}/lib/graphics.cc
+    )
+
+    target_include_directories(ledmatrix_graphics PUBLIC
+        ${LEDMATRIX_DIR}/include
+    )
+
+    target_link_libraries(flight_cast PRIVATE
+        ledmatrix_graphics
+    )
+else()
+    add_subdirectory(${LEDMATRIX_DIR} ledmatrix-build)
+
+    target_link_libraries(flight_cast PRIVATE
+        rgbmatrix
+    )
+endif()
