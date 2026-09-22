@@ -12,9 +12,9 @@
 
 struct Text
 {
-    const std::string items;
-    const rgb_matrix::Font &font;
-    const rgb_matrix::Color &color;
+    std::string items;
+    const rgb_matrix::Font *font;
+    const rgb_matrix::Color *color;
 };
 
 enum class Mode
@@ -27,7 +27,7 @@ enum class Mode
 struct Element
 {
     Mode mode;
-    int space;
+    int gap;
     std::vector<Text> items;
 };
 
@@ -66,10 +66,10 @@ public:
         w -= padding * 2;
     }
 
-    int lft() { return x; }
-    int rght() { return x + w; }
-    int tp() { return y; }
-    int btm() { return y - h; }
+    int lft() const { return x; }
+    int rght() const { return x + w; }
+    int tp() const { return y; }
+    int btm() const { return y - h; }
 };
 
 // TODO: Probably won't include below here
