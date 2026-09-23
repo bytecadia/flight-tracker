@@ -8,8 +8,6 @@
 class Snapshot
 {
 private:
-    // optional because Aircraft has no default ctor, and because "no aircraft
-    // selected yet" is a real state at startup that the reader must handle
     std::optional<Aircraft> _a;
     mutable std::mutex _mtx;
 

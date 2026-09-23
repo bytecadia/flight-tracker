@@ -29,11 +29,8 @@ inline std::string to_str(AircraftType type)
     case AircraftType::Heli:
         return "Heli";
         break;
-    case AircraftType::Unk:
-        return "Unk";
-        break;
-
     default:
+        return "Unk";
         break;
     }
 }
@@ -268,7 +265,7 @@ std::vector<Position> lay_row(int x, int y, int l, int r, const Row &row, int64_
                 pos.insert(pos.end(), np.begin(), np.end());
                 return pos;
 
-            case Mode::Scroll:
+            case Mode::Scroll: // TODO: Only scrows when the text overflows, is that what I want?
             {
                 std::vector<Element> rest(row.items.begin() + i, row.items.end());
                 auto [x_first, x_rollover] = scrl_plcmnt(x, l, r, 3, 1, time, Row{row.mode, rest, row.h, row.gap}); // TODO: Hard code gap and pps for now
@@ -279,14 +276,14 @@ std::vector<Position> lay_row(int x, int y, int l, int r, const Row &row, int64_
                 np = lay_elmnt(x_rollover, y, w, row.gap, elmnt);
                 pos.insert(pos.end(), np.begin(), np.end());
 
-                x += w;
+                x += w + row.gap;
                 continue;
             }
             }
         }
 
         pos.insert(pos.end(), np.begin(), np.end());
-        x += w;
+        x += w + row.gap;
     }
 
     return pos;
@@ -294,16 +291,16 @@ std::vector<Position> lay_row(int x, int y, int l, int r, const Row &row, int64_
 
 std::vector<Position> layout(const DisplayLayout &disp, int64_t time, Image img)
 {
-    const int y1 = img.h;
-    const int y2 = y1 + disp.rows[2].h + disp.row_gap;
+    const int y1 = img.h + disp.rows[0].h;
+    const int y2 = y1 + disp.rows[1].h + disp.row_gap;
     const int y4 = disp.content.btm();
-    const int y3 = y4 + disp.rows[4].h + disp.row_gap;
+    const int y3 = y4 - disp.rows[3].h - disp.row_gap;
 
     const int x = disp.content.lft();
-    const int x1 = (1 <= disp.img_span) ? x + img.h : x;
-    const int x2 = (2 <= disp.img_span) ? x + img.h : x;
-    const int x3 = (3 <= disp.img_span) ? x + img.h : x;
-    const int x4 = (4 <= disp.img_span) ? x + img.h : x;
+    const int x1 = (1 <= disp.img_span) ? x + img.w : x;
+    const int x2 = (2 <= disp.img_span) ? x + img.w : x;
+    const int x3 = (3 <= disp.img_span) ? x + img.w : x;
+    const int x4 = (4 <= disp.img_span) ? x + img.w : x;
 
     std::vector<Position> pos, row_pos;
 
@@ -313,10 +310,10 @@ std::vector<Position> layout(const DisplayLayout &disp, int64_t time, Image img)
         pos.insert(pos.end(), row.begin(), row.end());
     };
 
-    add_row(x1, y1, 1);
-    add_row(x2, y2, 2);
-    add_row(x3, y3, 3);
-    add_row(x4, y4, 4);
+    add_row(x1, y1, 0);
+    add_row(x2, y2, 1);
+    add_row(x3, y3, 2);
+    add_row(x4, y4, 3);
 
     return pos;
 }
