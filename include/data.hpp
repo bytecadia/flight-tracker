@@ -4,8 +4,38 @@
 #include <spdlog/spdlog.h>
 
 #include "strings.hpp"
-#include "parser.hpp"
-// TODO: Bad to just be including this for the AircraftType?
+#include "aircraft.hpp"
+#include "geometry.hpp"
+#include "config.hpp"
+
+// TODO: Make this not header only
+
+enum class AircraftType
+{
+    Prop,
+    Jet,
+    Heli,
+    Unk
+};
+
+inline std::string to_str(AircraftType type)
+{
+    switch (type)
+    {
+    case AircraftType::Prop:
+        return "Prop";
+        break;
+    case AircraftType::Jet:
+        return "Jet";
+        break;
+    case AircraftType::Heli:
+        return "Heli";
+        break;
+    default:
+        return "Unk";
+        break;
+    }
+}
 
 struct AircraftInfo
 {
@@ -13,6 +43,40 @@ struct AircraftInfo
     std::string mdl;
     AircraftType type;
 };
+
+// Caller must check if icao is not empty
+inline std::string parse_icao(const std::vector<std::string> &msg)
+{
+    // TODO: Do I need more checks here?
+    if (msg.size() != 22)
+        return "";
+
+    return msg[4];
+}
+
+inline AircraftType get_type(int type, int engine)
+{
+    if (type == 6) // Rotocraft
+        return AircraftType::Heli;
+
+    if (type == 4 || // Fixed-wing, singe-engine
+        type == 5)   // Fixed-wing, multi-engine
+    {
+        if (engine == 4 || // Turbojet
+            engine == 5)   // Turbofan
+            return AircraftType::Jet;
+
+        if (engine == 1 ||  // Reciprocating
+            engine == 2 ||  // Turboprop
+            engine == 7 ||  // 2-cycle
+            engine == 8 ||  // 4-cycle
+            engine == 10 || // Electric
+            engine == 11)   // Rotary
+            return AircraftType::Prop;
+    }
+
+    return AircraftType::Unk;
+}
 
 // TODO: Should this be returning optional, does it make sense for partials here
 inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
@@ -82,3 +146,42 @@ inline std::string lookup_airline(SQLite::Database &db, std::string callsign)
     }
     return "";
 }
+
+struct DisplayData
+{
+    std::string header; // Airline or manufacturer - this is why database is needed
+    std::string img_path;
+    std::string callsign;
+    int alt;
+    int speed;
+    int distance;
+    int bearing;
+    int track;
+
+    // TODO: Need to add check to process.cpp to ensure below is true
+    DisplayData(SQLite::Database &db, const Aircraft &a,
+                const Config &cfg) // Assumes aircraft has all info
+    {
+        std::string airline = lookup_airline(db, a.callsign);
+        AircraftInfo info = lookup_aircraft(db, a.icao);
+
+        img_path = std::format("assets/sprites/{}", to_str(info.type));
+
+        if (!airline.empty())
+        {
+            header = airline;
+            auto try_path = std::format("assets/airlines/{}", airline); // Hardcoded for now
+            if (std::filesystem::exists(try_path))
+                img_path = try_path;
+        }
+        else
+            header = std::format("{} {}", info.mfc, info.mdl);
+
+        callsign = a.callsign;
+        alt = *a.alt;
+        speed = *a.gs;
+        distance = static_cast<int>(calc_dist(cfg.lat, cfg.lon, *a.lat, *a.lon));
+        track = *a.trk;
+        bearing = static_cast<int>(calc_bearing(cfg.lat, cfg.lon, *a.lat, *a.lon));
+    }
+};

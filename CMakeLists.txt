@@ -46,7 +46,8 @@ add_executable(
     src/socket.cpp
     src/aircraft.cpp
     src/process.cpp
-    src/display.cpp
+    src/layout.cpp
+    src/render.cpp 
 )
 
 add_library(INIReader STATIC
@@ -59,7 +60,7 @@ target_include_directories(INIReader PUBLIC
     ${inih_SOURCE_DIR}/cpp
 )
 
-target_include_directories( flight_cast PRIVATE
+target_include_directories(flight_cast PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${inih_SOURCE_DIR}/cpp
         ${stb_SOURCE_DIR}
@@ -72,6 +73,10 @@ target_link_libraries(flight_cast PRIVATE
 )
 
 set(LEDMATRIX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix)
+
+target_compile_definitions(flight_cast PRIVATE
+    FONT_DIR="${LEDMATRIX_DIR}/fonts"
+)
 
 if (APPLE)
     add_library(ledmatrix_graphics STATIC

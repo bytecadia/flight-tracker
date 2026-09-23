@@ -13,6 +13,7 @@
 #include "config.hpp"
 #include "geometry.hpp"
 #include "process.hpp"
+#include "data.hpp"
 
 using namespace std::chrono_literals;
 

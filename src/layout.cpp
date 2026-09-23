@@ -1,142 +1,52 @@
 #include <string>
 #include <SQLiteCpp/SQLiteCpp.h>
 
-#include "ui.hpp"
-#include "config.hpp"
-#include "data.hpp"
-#include "geometry.hpp"
+#include "config.hpp" // TODO: Pretty sure config should be used here?
 #include "aircraft.hpp"
 #include "colors.hpp"
 #include "strings.hpp"
 #include "graphics.h"
+#include "data.hpp"
+#include "layout.hpp"
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include "stb_image_resize2.h"
-
-inline std::string to_str(AircraftType type)
+DisplayLayout::DisplayLayout(const DisplayData &data,
+                             const rgb_matrix::Font &sml,
+                             const rgb_matrix::Font &med, const rgb_matrix::Font &lrg, int x, int y, int w, int h, int padding, int row_gap, int img_span)
+    : content(x, y, w, h), row_gap(row_gap), img_span(img_span)
 {
-    switch (type)
-    {
-    case AircraftType::Prop:
-        return "Prop";
-        break;
-    case AircraftType::Jet:
-        return "Jet";
-        break;
-    case AircraftType::Heli:
-        return "Heli";
-        break;
-    default:
-        return "Unk";
-        break;
-    }
+    rows.push_back(Row{
+        Mode::Scroll,
+        {Element{Mode::Scroll, 0, {Text{data.header, &lrg, &RED}}}},
+        lrg.height(), // TODO: Made it largest font height for now, should be good?
+        0});
+
+    rows.push_back(Row{
+        Mode::Fit,
+        {Element{Mode::Scroll, 0, {Text{data.callsign, &lrg, &RED}}}},
+        lrg.height(),
+        0});
+
+    rows.push_back(Row{
+        Mode::Fit,
+        {Element{Mode::Fit, 2, {Text{std::to_string(data.speed), &sml, &BLUE}, Text{"mph", &sml, &LIGHT_BLUE}}},
+         Element{Mode::Fit, 2, {Text{std::to_string(data.alt), &sml, &BLUE}, Text{"ft", &sml, &LIGHT_BLUE}}}},
+        lrg.height(),
+        2});
+
+    rows.push_back(Row{
+        Mode::Fit,
+        {Element{Mode::Fit, 2, {Text{std::to_string(data.distance), &med, &YELLOW}, Text{"mi", &sml, &LIGHT_YELLOW}}},
+         Element{Mode::Fit, 0, {Text{std::to_string(data.bearing), &med, &YELLOW}}},
+         Element{Mode::Fit, 2, {Text{"-", &med, &YELLOW}, Text{std::to_string(data.track), &med, &YELLOW}, Text{"°", &sml, &LIGHT_YELLOW}}}},
+        lrg.height(),
+        2});
+
+    content.inset(padding);
 }
-
-struct DisplayData
-{
-    std::string header; // Airline or manufacturer - this is why database is needed
-    std::string img_path;
-    std::string callsign;
-    int alt;
-    int speed;
-    int distance;
-    int bearing;
-    int track;
-
-    // TODO: Need to add check to process.cpp to ensure below is true
-    DisplayData(SQLite::Database &db, const Aircraft &a,
-                const Config &cfg) // Assumes aircraft has all info
-    {
-        std::string airline = lookup_airline(db, a.callsign);
-        AircraftInfo info = lookup_aircraft(db, a.icao);
-
-        img_path = std::format("assets/sprites/{}", to_str(info.type));
-
-        if (!airline.empty())
-        {
-            header = airline;
-            auto try_path = std::format("assets/airlines/{}", airline); // Hardcoded for now
-            if (std::filesystem::exists(try_path))
-                img_path = try_path;
-        }
-        else
-            header = std::format("{} {}", info.mfc, info.mdl);
-
-        callsign = a.callsign;
-        alt = *a.alt;
-        speed = *a.gs;
-        distance = static_cast<int>(calc_dist(cfg.lat, cfg.lon, *a.lat, *a.lon));
-        track = *a.trk;
-        bearing = static_cast<int>(calc_bearing(cfg.lat, cfg.lon, *a.lat, *a.lon));
-    }
-};
-
-// TODO: Everything below this is not compiling, everything above is
-
-struct DisplayLayout
-{
-    std::vector<Row> rows;
-    Rect content;
-    int row_gap;
-    int img_span;
-
-    DisplayLayout(const DisplayData &data,
-                  const rgb_matrix::Font &sml,
-                  const rgb_matrix::Font &med, const rgb_matrix::Font &lrg, int x, int y, int w, int h, int padding, int row_gap, int img_span)
-        : content(x, y, w, h), row_gap(row_gap), img_span(img_span)
-    {
-        rows.push_back(Row{
-            Mode::Scroll,
-            {Element{Mode::Scroll, 0, {Text{data.header, &lrg, &RED}}}},
-            lrg.height(), // TODO: Made it largest font height for now, should be good?
-            0});
-
-        rows.push_back(Row{
-            Mode::Fit,
-            {Element{Mode::Scroll, 0, {Text{data.callsign, &lrg, &RED}}}},
-            lrg.height(),
-            0});
-
-        rows.push_back(Row{
-            Mode::Fit,
-            {Element{Mode::Fit, 2, {Text{std::to_string(data.speed), &sml, &BLUE}, Text{"mph", &sml, &LIGHT_BLUE}}},
-             Element{Mode::Fit, 2, {Text{std::to_string(data.alt), &sml, &BLUE}, Text{"ft", &sml, &LIGHT_BLUE}}}},
-            lrg.height(),
-            2});
-
-        rows.push_back(Row{
-            Mode::Fit,
-            {Element{Mode::Fit, 2, {Text{std::to_string(data.distance), &med, &YELLOW}, Text{"mi", &sml, &LIGHT_YELLOW}}},
-             Element{Mode::Fit, 0, {Text{std::to_string(data.bearing), &med, &YELLOW}}},
-             Element{Mode::Fit, 2, {Text{"-", &med, &YELLOW}, Text{std::to_string(data.track), &med, &YELLOW}, Text{"°", &sml, &LIGHT_YELLOW}}}},
-            lrg.height(),
-            2});
-
-        content.inset(padding);
-    }
-};
 
 int msr(const Text &t)
 {
     return MeasureText(*t.font, t.items.c_str(), 0);
-}
-
-template <typename T>
-int msr(const T &t)
-{
-    int w = 0;
-    const size_t n = t.items.size();
-    for (size_t i = 0; i < n; i++)
-    {
-        w += msr(t.items[i]);
-        if (i + 1 < t.items.size())
-            w += t.gap;
-    }
-
-    return w;
 }
 
 std::vector<Position> lay_elmnt(int x, int y, int &w, int gap,

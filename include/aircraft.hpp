@@ -4,8 +4,6 @@
 #include <optional>
 #include <string>
 
-#include "parser.hpp"
-
 struct Aircraft
 {
     // SBS Data - Required

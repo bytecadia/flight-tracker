@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cmath>
 #include <numbers>
 
@@ -6,7 +8,6 @@ inline double rads(double deg)
     return deg * (std::numbers::pi / 180);
 }
 
-// Initial bearing (forward azimuth) from base to target, in degrees, 0..360
 inline double calc_bearing(double base_lat, double base_lon,
                            double targ_lat, double targ_lon)
 {
@@ -21,10 +22,10 @@ inline double calc_bearing(double base_lat, double base_lon,
     double x = std::cos(phi1) * std::sin(phi2) -
                std::sin(phi1) * std::cos(phi2) * std::cos(delta_lambda);
 
-    double theta = std::atan2(y, x); // radians, range -pi..pi
+    double theta = std::atan2(y, x);
     double degrees = theta * 180.0 / std::numbers::pi;
 
-    return std::fmod(degrees + 360.0, 360.0); // normalize to 0..360
+    return std::fmod(degrees + 360.0, 360.0);
 }
 
 // Equirectangular approximation

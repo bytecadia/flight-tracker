@@ -4,12 +4,6 @@
 #include <vector>
 #include "graphics.h"
 
-// TODO: These are for image logic only
-#include <optional>
-#include <spdlog/spdlog.h>
-#include "stb_image.h"
-#include "stb_image_resize2.h"
-
 struct Text
 {
     std::string items;
@@ -26,8 +20,8 @@ enum class Mode
 
 struct Element
 {
-    Mode mode;
-    int gap;
+    Mode mode; // TODO: These fields left unused?
+    int gap;   // TODO: These fields left unused?
     std::vector<Text> items;
 };
 
@@ -71,8 +65,6 @@ public:
     int tp() const { return y; }
     int btm() const { return y + h; }
 };
-
-// TODO: Probably won't include below here
 
 struct Image
 {
