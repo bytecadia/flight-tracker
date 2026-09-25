@@ -16,6 +16,10 @@
 
 int main()
 {
+    spdlog::set_level(spdlog::level::debug);                              // DBG
+    spdlog::set_pattern("[%H:%M:%S.%e] [%^%L%$] [t:%t] %v");              // DBG
+    spdlog::debug("main: starting");                                      // DBG
+
     sigset_t s;
     sigemptyset(&s);
     sigaddset(&s, SIGINT);
@@ -36,6 +40,10 @@ int main()
         return 0;
 
     Config cfg = parse_cfg(CONFIG_PATH);
+    spdlog::debug("cfg: feed={}:{} obs=({},{})", cfg.host, cfg.port, cfg.lat, cfg.lon);   // DBG
+    spdlog::debug("cfg: fonts sml={} med={} lrg={}", cfg.sml_fnt, cfg.med_fnt, cfg.lrg_fnt); // DBG
+    spdlog::debug("cfg: panel {}x{} pad={} row_gap={} img_span={} img_h={}",              // DBG
+                  cfg.cols, cfg.rows, cfg.padding, cfg.row_gap, cfg.img_span, cfg.img_h); // DBG
 
     TSQueue<std::string> msg_q;
     Snapshot snapshot;
@@ -46,9 +54,11 @@ int main()
     threads.emplace_back(socket_reader, stp_src.get_token(), std::ref(msg_q), cfg); // config read only
     threads.emplace_back(process, stp_src.get_token(), std::ref(msg_q), std::ref(snapshot), std::ref(*db), std::cref(cfg));
     threads.emplace_back(render, stp_src.get_token(), std::ref(snapshot), std::cref(cfg), std::ref(*db));
+    spdlog::debug("main: 3 threads started, waiting for signal");        // DBG
 
     int sig;
     sigwait(&s, &sig);
+    spdlog::debug("main: got signal {}, stopping", sig);                 // DBG
 
     stp_src.request_stop();
 }

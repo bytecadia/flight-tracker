@@ -68,6 +68,8 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
     std::string buffer;
     char chunk[4096]; // common chunk size
 
+    long dbg_pushed = 0;                                                 // DBG
+
     // Outer loop to read chunk message and add to buffer
     bool resync = false; // Handle partial messages when buffer exceeds max size
     while (!st.stop_requested())
@@ -108,10 +110,15 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
                 continue;
             }
 
+            if (++dbg_pushed <= 3 || dbg_pushed % 500 == 0)                     // DBG
+                spdlog::debug("socket: pushed msg #{} ({} bytes) '{}'",         // DBG
+                              dbg_pushed, msg.size(), msg);                     // DBG
+
             q.push(msg);
         }
     }
 
+    spdlog::debug("socket: recv loop ended after {} messages", dbg_pushed);     // DBG
     close(fd);
 }
 
@@ -146,13 +153,16 @@ void socket_reader(std::stop_token st, TSQueue<std::string> &q, const Config &cf
             if (!try_sleep(st, std::chrono::milliseconds(1000 << attempt)))
                 return;
 
+        spdlog::debug("socket: connecting to {}:{} (attempt {})", cfg.host, cfg.port, attempt); // DBG
         fd = conn_sock(cfg.host.c_str(), cfg.port.c_str());
 
         if (fd < 0)
         {
+            spdlog::debug("socket: connect FAILED, backing off");            // DBG
             attempt = std::min(attempt + 1, 5); // Limit backoff to 32 seconds
             continue;
         }
+        spdlog::debug("socket: connected, fd={}", fd);                       // DBG
 
         auto connected_at = std::chrono::steady_clock::now();
 

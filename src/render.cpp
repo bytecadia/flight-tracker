@@ -47,9 +47,12 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
     rgb_matrix::Font sml;
     rgb_matrix::Font med;
     rgb_matrix::Font lrg;
+    spdlog::debug("render: FONT_DIR={}", FONT_DIR); // DBG
     load_font(sml, ((std::format("{}/{}.bdf", FONT_DIR, cfg.sml_fnt).c_str())));
     load_font(med, ((std::format("{}/{}.bdf", FONT_DIR, cfg.med_fnt).c_str())));
     load_font(lrg, ((std::format("{}/{}.bdf", FONT_DIR, cfg.lrg_fnt).c_str())));
+    spdlog::debug("render: font heights sml={} med={} lrg={} (0 means NOT loaded)", // DBG
+                  sml.height(), med.height(), lrg.height());                        // DBG
 
     rgb_matrix::RGBMatrix::Options options;
     options.rows = cfg.rows;
@@ -66,12 +69,19 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
 
     rgb_matrix::RGBMatrix *mtrx = rgb_matrix::CreateMatrixFromOptions(options, runtime_opt);
     if (mtrx == NULL)
+    {
+        spdlog::debug("render: CreateMatrixFromOptions returned NULL, giving up"); // DBG
         return;
+    }
+    spdlog::debug("render: matrix created {}x{}", mtrx->width(), mtrx->height()); // DBG
 
     Canvas canvas(mtrx->CreateFrameCanvas(), 0, cfg.cols);
 
     ImgCache cache;
+    long dbg_frames = 0, dbg_idle = 0; // DBG
+    std::string dbg_last_icao;         // DBG
     auto start = std::chrono::steady_clock::now();
+    spdlog::debug("render: entering loop"); // DBG
     while (!st.stop_requested())
     {
         auto a = snap.read(); // TODO!: what did I mean by this -> (TODO: Make this blocking)
@@ -82,9 +92,21 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
         // TODO: Create an idle screen?
 
         if (!a)
+        {
+            if (++dbg_idle % 200 == 1)                                             // DBG
+                spdlog::debug("render: snapshot EMPTY (idle spin x{})", dbg_idle); // DBG
             continue;
+        }
 
         DisplayData data{db, *a, cfg};
+        if (a->icao != dbg_last_icao)                                                                // DBG
+        {                                                                                            // DBG
+            dbg_last_icao = a->icao;                                                                 // DBG
+            spdlog::debug("render: NEW aircraft {} hdr='{}' cs='{}' alt={} spd={} dist={} img='{}'", // DBG
+                          a->icao, data.header, data.callsign, data.alt,                             // DBG
+                          data.speed, data.distance, data.img_path);                                 // DBG
+        } // DBG
+
         DisplayLayout disp{data, sml, med, lrg, 0, 0, cfg.cols, cfg.rows, cfg.padding, cfg.row_gap, cfg.img_span};
 
         canvas.Clear();
@@ -96,6 +118,17 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         auto positions = layout(disp, elapsed, *img);
+
+        if (++dbg_frames <= 3 || dbg_frames % 300 == 0)                                          // DBG
+        {                                                                                        // DBG
+            spdlog::debug("render: frame {} img={} content x={} y={} w={} h={} -> {} positions", // DBG
+                          dbg_frames, img ? "yes" : "NO", disp.content.x, disp.content.y,        // DBG
+                          disp.content.w, disp.content.h, positions.size());                     // DBG
+            for (size_t i = 0; i < positions.size() && i < 6; ++i)                               // DBG
+                spdlog::debug("render:   pos[{}] '{}' at ({},{}) clip[{},{}]",                   // DBG
+                              i, positions[i].text.items, positions[i].x,                        // DBG
+                              positions[i].y, positions[i].l, positions[i].r);                   // DBG
+        } // DBG
 
         draw(positions, canvas);
         auto next = mtrx->SwapOnVSync(canvas.GetRGBMatrix());
