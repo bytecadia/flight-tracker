@@ -124,16 +124,16 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
 
         auto positions = layout(disp, elapsed, *img);
 
-        if (++dbg_frames <= 3 || dbg_frames % 300 == 0)                                          // DBG
-        {                                                                                        // DBG
-            spdlog::debug("render: frame {} img={} content x={} y={} w={} h={} -> {} positions", // DBG
-                          dbg_frames, img ? "yes" : "NO", disp.content.x, disp.content.y,        // DBG
-                          disp.content.w, disp.content.h, positions.size());                     // DBG
-            for (size_t i = 0; i < positions.size() && i < 6; ++i)                               // DBG
-                spdlog::debug("render:   pos[{}] '{}' at ({},{}) clip[{},{}]",                   // DBG
-                              i, positions[i].text.items, positions[i].x,                        // DBG
-                              positions[i].y, positions[i].l, positions[i].r);                   // DBG
-        } // DBG
+        // if (++dbg_frames <= 3 || dbg_frames % 300 == 0) // DBG
+        // {                                               // DBG
+        //     // spdlog::debug("render: frame {} img={} content x={} y={} w={} h={} -> {} positions", // DBG
+        //     //               dbg_frames, img ? "yes" : "NO", disp.content.x, disp.content.y,        // DBG
+        //     //               disp.content.w, disp.content.h, positions.size());                     // DBG
+        //     for (size_t i = 0; i < positions.size() && i < 6; ++i)             // DBG
+        //         spdlog::debug("render:   pos[{}] '{}' at ({},{}) clip[{},{}]", // DBG
+        //                       i, positions[i].text.items, positions[i].x,      // DBG
+        //                       positions[i].y, positions[i].l, positions[i].r); // DBG
+        // } // DBG
 
         draw(positions, canvas);
         auto next = mtrx->SwapOnVSync(canvas.GetRGBMatrix());
