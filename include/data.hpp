@@ -84,9 +84,9 @@ inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
 {
     try
     {
-        // TODO: Should I make this lower or upper in db
-        std::ranges::transform(icao, icao.begin(), [](unsigned char c)
-                               { return std::tolower(c); });
+        // // TODO: Should I make this lower or upper in db
+        // std::ranges::transform(icao, icao.begin(), [](unsigned char c)
+        //                        { return std::tolower(c); });
 
         // TODO: What more to add?
         SQLite::Statement query(db,
@@ -100,11 +100,11 @@ inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
 
         query.bind(1, icao);
 
-        if (!query.executeStep())
-        {
-            spdlog::info("No aircraft found for ICAO '{}'", icao);
-            return AircraftInfo{};
-        }
+        // if (!query.executeStep())
+        // {
+        //     spdlog::info("No aircraft found for ICAO '{}'", icao);
+        //     return AircraftInfo{};
+        // }
 
         AircraftInfo info;
         info.mfc = query.getColumn(0).getString();
@@ -113,14 +113,14 @@ inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
         int type_aircraft = query.getColumn(2).getInt();
         int type_engine = query.getColumn(3).getInt();
 
-        spdlog::info(
-            "Aircraft found: ICAO='{}', manufacturer='{}', model='{}', "
-            "type_aircraft={}, type_engine={}",
-            icao,
-            info.mfc,
-            info.mdl,
-            type_aircraft,
-            type_engine);
+        // spdlog::info(
+        //     "Aircraft found: ICAO='{}', manufacturer='{}', model='{}', "
+        //     "type_aircraft={}, type_engine={}",
+        //     icao,
+        //     info.mfc,
+        //     info.mdl,
+        //     type_aircraft,
+        //     type_engine);
 
         info.type = get_type(type_aircraft, type_engine);
 
