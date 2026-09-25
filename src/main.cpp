@@ -35,7 +35,7 @@ int main()
     if (!db)
         return 0;
 
-    Config cfg = parse_cfg("../config.ini");
+    Config cfg = parse_cfg(CONFIG_PATH);
 
     TSQueue<std::string> msg_q;
     Snapshot snapshot;

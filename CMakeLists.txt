@@ -91,6 +91,7 @@ if(NOT EXISTS "${LEDMATRIX_DIR}/Makefile")
 endif()
 
 target_compile_definitions(flight_cast PRIVATE
+    CONFIG_PATH="${CMAKE_SOURCE_DIR}/config.ini"
     FONT_DIR="${LEDMATRIX_DIR}/fonts"
 )
 

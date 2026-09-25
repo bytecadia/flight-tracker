@@ -34,31 +34,41 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
 #ifdef __APPLE__
 // Not on pi
 #else
-    rgb_matrix::Options options;
+    auto load_font = [&](rgb_matrix::Font &font, const std::string &path)
+    {
+        if (!font.LoadFont(path.c_str()))
+        {
+            spdlog::error("Couldn't load font '{}'", path.c_str());
+            return false;
+        }
+        return true;
+    };
+
+    rgb_matrix::Font sml;
+    rgb_matrix::Font med;
+    rgb_matrix::Font lrg;
+    load_font(sml, ((std::format("{}/{}.bdf", FONT_DIR, cfg.sml_fnt).c_str())));
+    load_font(med, ((std::format("{}/{}.bdf", FONT_DIR, cfg.med_fnt).c_str())));
+    load_font(lrg, ((std::format("{}/{}.bdf", FONT_DIR, cfg.lrg_fnt).c_str())));
+
+    rgb_matrix::RGBMatrix::Options options;
     options.rows = cfg.rows;
     options.cols = cfg.cols;
 
-    rgb_matrix::RuntimeOptions runtime_opt;
+    // TODO: Fix hard coding here
+    options.chain_length = 1;
+    options.parallel = 1;
+    options.limit_refresh_rate_hz = 300;
+    options.show_refresh_rate = true;
 
-    RGBMatrix *mtrx = rgb_matrix::CreateFromOptions(options, runtime_opt);
+    rgb_matrix::RuntimeOptions runtime_opt;
+    runtime_opt.gpio_slowdown = 5;
+
+    rgb_matrix::RGBMatrix *mtrx = rgb_matrix::CreateMatrixFromOptions(options, runtime_opt);
     if (mtrx == NULL)
         return;
 
     Canvas canvas(mtrx->CreateFrameCanvas(), 0, cfg.cols);
-
-    // TODO: add checks + logging for success and add font path
-    rgb_matrix::Font font;
-    if (!font.LoadFont(bdf_font_file))
-    {
-        fprintf(stderr, "Couldn't load font '%s'\n", bdf_font_file);
-        return 1;
-    }
-    rgb_matrix::Font sml;
-    rgb_matrix::Font med;
-    rgb_matrix::Font lrg;
-    sml.LoadFont((std::format("{}/{}", FONT_DIR, cfg.sml_fnt).c_str()));
-    med.LoadFont((std::format("{}/{}", FONT_DIR, cfg.med_fnt).c_str()));
-    lrg.LoadFont((std::format("{}/{}", FONT_DIR, cfg.lrg_fnt).c_str()));
 
     ImgCache cache;
     auto start = std::chrono::steady_clock::now();
@@ -74,21 +84,22 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
         if (!a)
             continue;
 
-        DisplayData data{db, a, cfg};
+        DisplayData data{db, *a, cfg};
         DisplayLayout disp{data, sml, med, lrg, 0, 0, cfg.cols, cfg.rows, cfg.padding, cfg.row_gap, cfg.img_span};
 
         canvas.Clear();
 
-        std::optional<Image> img = img_cache.get_image();
+        std::optional<Image> img = cache.get_image(data.img_path, cfg.img_h);
 
         if (img)
-            draw_image(canvas, disp.content.lft(), disp.content.tp(), *logo);
+            draw_image(canvas, disp.content.lft(), disp.content.tp(), *img);
 
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-        auto positions = layout(disp, elapsed);
+        auto positions = layout(disp, elapsed, *img);
 
         draw(positions, canvas);
-        canvas = mtrx->SwapOnVSync(canvas.GetRGBMatrix());
+        auto next = mtrx->SwapOnVSync(canvas.GetRGBMatrix());
+        canvas.SetRGBMatrix(next);
     }
 
     delete mtrx;

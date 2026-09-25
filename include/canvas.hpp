@@ -27,5 +27,6 @@ public:
         this->r = r;
     }
 
-    rgb_matrix::Canvas *GetRGBMatrix() { return c; } // TODO: Do I even need this?
+    rgb_matrix::FrameCanvas *GetRGBMatrix() { return c; }            // TODO: Do I even need this?
+    void SetRGBMatrix(rgb_matrix::FrameCanvas *new_c) { c = new_c; } // TODO: Do I even need this?
 };

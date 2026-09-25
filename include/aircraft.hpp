@@ -17,7 +17,7 @@ struct Aircraft
     std::optional<int> trk;    // Field 14 - MSG 2,4
     std::optional<double> lat; // Field 15 - MSG 2,3
     std::optional<double> lon; // Field 16 - MSG 2,3
-    std::optional<bool> gnd;   // Field 22 - MSG 2,3,5,6,7,8
+    std::optional<int> gnd;    // Field 22 - MSG 2,3,5,6,7,8
 
     // Constructor that takes in just the ICAO and defaults the other fields
     explicit Aircraft(std::string icao);
