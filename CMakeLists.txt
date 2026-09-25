@@ -72,7 +72,23 @@ target_link_libraries(flight_cast PRIVATE
     INIReader
 )
 
+find_package(Git REQUIRED)
+
 set(LEDMATRIX_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rpi-rgb-led-matrix)
+
+if(NOT EXISTS "${LEDMATRIX_DIR}/Makefile")
+    message(STATUS "Initializing git submodules...")
+
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_SUBMODULE_RESULT
+    )
+
+    if(NOT GIT_SUBMODULE_RESULT EQUAL 0)
+        message(FATAL_ERROR "Failed to initialize git submodules")
+    endif()
+endif()
 
 target_compile_definitions(flight_cast PRIVATE
     FONT_DIR="${LEDMATRIX_DIR}/fonts"
@@ -92,9 +108,21 @@ if (APPLE)
         ledmatrix_graphics
     )
 else()
-    add_subdirectory(${LEDMATRIX_DIR} ledmatrix-build)
+    add_custom_target(rgbmatrix_build
+        COMMAND ${CMAKE_MAKE_PROGRAM} -C ${LEDMATRIX_DIR}/lib
+        WORKING_DIRECTORY ${LEDMATRIX_DIR}
+    )
+
+    add_dependencies(flight_cast rgbmatrix_build)
+
+    target_include_directories(flight_cast PRIVATE
+        ${LEDMATRIX_DIR}/include
+    )
 
     target_link_libraries(flight_cast PRIVATE
-        rgbmatrix
+        ${LEDMATRIX_DIR}/lib/librgbmatrix.a
+        pthread
+        rt
+        m
     )
 endif()
