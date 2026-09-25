@@ -19,8 +19,6 @@ using namespace std::chrono_literals;
 
 void process(std::stop_token st,
              TSQueue<std::string> &msg_q,
-             TSQueue<std::vector<std::string>> &enrich_q,
-             TSQueue<std::vector<std::string>> &result_q,
              Snapshot &snapshot,
              SQLite::Database &db,
              const Config &cfg)
@@ -43,11 +41,8 @@ void process(std::stop_token st,
             if (!icao.empty())
             {
                 auto [it, inserted] = aircrafts.try_emplace(icao, icao);
-
-                if (it->second.parse_msg(fields))
-                {
-                    it->second.last_seen = std::chrono::steady_clock::now();
-                }
+                it->second.parse_msg(fields);
+                it->second.last_seen = std::chrono::steady_clock::now();
             }
         }
 

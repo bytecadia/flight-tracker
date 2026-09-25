@@ -4,11 +4,11 @@
 
 class Canvas : public rgb_matrix::Canvas
 {
-    rgb_matrix::Canvas *c;
+    rgb_matrix::FrameCanvas *c;
     int l, r;
 
 public:
-    Canvas(rgb_matrix::Canvas *c, int l, int r) : c(c), l(l), r(r) {}
+    Canvas(rgb_matrix::FrameCanvas *c, int l, int r) : c(c), l(l), r(r) {}
 
     int width() const override { return c->width(); }
     int height() const override { return c->height(); }
@@ -17,7 +17,7 @@ public:
 
     void SetPixel(int x, int y, uint8_t r, uint8_t g, uint8_t b) override
     {
-        if (x >= l && x < r)
+        if (x >= this->l && x < this->r)
             c->SetPixel(x, y, r, g, b);
     }
 

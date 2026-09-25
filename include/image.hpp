@@ -12,10 +12,8 @@ load_image(const std::string &path, int target_h)
     unsigned char *decoded = stbi_load(path.c_str(), &w, &h, &channels, 4);
 
     if (!decoded)
-    {
-        spdlog::error("Unable to load image at path '{}'", path);
         return std::nullopt;
-    }
+
     int target_w = w * target_h / h; // Calculate new width
     Image img;
     img.w = target_w;
@@ -28,7 +26,7 @@ load_image(const std::string &path, int target_h)
     return img;
 }
 
-void draw_image(Canvas c, int x, int y, Image img)
+void draw_image(Canvas &c, int x, int y, const Image &img)
 {
     for (size_t iy = 0; iy < img.h; ++iy)
     {
@@ -40,3 +38,22 @@ void draw_image(Canvas c, int x, int y, Image img)
         }
     }
 }
+
+class ImgCache
+{
+    std::unordered_map<std::string, std::optional<Image>> cache;
+
+public:
+    std::optional<Image> get_image(const std::string &path, int target_h)
+    {
+        auto it = cache.find(path);
+
+        if (it == cache.end())
+        {
+            auto img = load_image(path, target_h);
+            cache[path] = img;
+            return img;
+        }
+        return it->second;
+    }
+};

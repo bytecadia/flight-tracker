@@ -12,6 +12,7 @@
 #include "config.hpp"
 #include "process.hpp"
 #include "snapshot.hpp"
+#include "render.hpp"
 
 int main()
 {
@@ -21,35 +22,30 @@ int main()
     sigaddset(&s, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &s, nullptr);
 
-
     std::optional<SQLite::Database> db;
-    try {
+    try
+    {
         db.emplace("aircraft.db", SQLite::OPEN_READONLY);
     }
     catch (const SQLite::Exception &e)
     {
-        spdlog::error("Database 'aircraft.db' failed to open with error {}",  e.what()); // Hardcoded for now
+        spdlog::error("Database 'aircraft.db' failed to open with error {}", e.what()); // Hardcoded for now
     }
 
-    if (!db) 
+    if (!db)
         return 0;
 
     Config cfg = parse_cfg("../config.ini");
 
     TSQueue<std::string> msg_q;
-    TSQueue<std::vector<std::string>> enrich_q;
-    TSQueue<std::vector<std::string>> result_q;
     Snapshot snapshot;
 
     std::vector<std::jthread> threads;
 
     std::stop_source stp_src;
     threads.emplace_back(socket_reader, stp_src.get_token(), std::ref(msg_q), cfg); // config read only
-    threads.emplace_back(process, stp_src.get_token(),
-                         std::ref(msg_q), std::ref(enrich_q), std::ref(result_q),
-                         std::ref(snapshot), std::ref(*db), std::cref(cfg));
-    // threads.emplace_back(enrich, stp_src.get_token());
-    // threads.emplace_back(render, stp_src.get_token());
+    threads.emplace_back(process, stp_src.get_token(), std::ref(msg_q), std::ref(snapshot), std::ref(*db), std::cref(cfg));
+    threads.emplace_back(render, stp_src.get_token(), std::ref(snapshot), std::cref(cfg), std::ref(*db));
 
     int sig;
     sigwait(&s, &sig);

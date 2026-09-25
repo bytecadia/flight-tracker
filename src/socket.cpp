@@ -30,11 +30,10 @@ int conn_sock(const char *host, const char *port)
     hints.ai_family = AF_UNSPEC;     // IPv4 or IPv6
     hints.ai_socktype = SOCK_STREAM; // TCP
 
-    struct addrinfo *res = nullptr;                 // resolver outputs linked list (free with freeaddrinfo)
-    int err = getaddrinfo(host, port, &hints, &res) != 0;
-    if (err != 0) // 0 if success
+    struct addrinfo *res = nullptr;            // resolver outputs linked list (free with freeaddrinfo)
+    if (getaddrinfo(host, port, &hints, &res)) // 0 if success
     {
-        spdlog::error("Failed to resolve '{}:{}' with error {}", host, port, errno);
+        spdlog::error("Failed to resolve '{}:{}'", host, port);
         return -1;
     }
 
@@ -49,13 +48,14 @@ int conn_sock(const char *host, const char *port)
             continue; // Try next
         }
 
-        if (!set_timeout(fd) ||  connect(fd, p->ai_addr, p->ai_addrlen) != 0) // fd, binary address, length
+        if (!set_timeout(fd) || connect(fd, p->ai_addr, p->ai_addrlen) != 0) // fd, binary address, length
         {
             spdlog::error("Failed to connect to '{}:{}' with error '{}'", host, port, errno);
             close(fd);
             fd = -1;
             continue;
         }
+        break;
     }
 
     freeaddrinfo(res); // Free linked list
@@ -75,7 +75,7 @@ void recv_sock(int fd, TSQueue<std::string> &q, std::stop_token st)
         ssize_t n = recv(fd, chunk, sizeof(chunk), 0); // receive bytes from socket and save into   chuck with default behavior (flags = 0)
 
         if (n == 0) // Means peer performed a shutdown
-            break; 
+            break;
 
         if (n < 0)
         {
@@ -120,7 +120,7 @@ bool try_sleep(std::stop_token st, std::chrono::milliseconds time)
 {
     // Mutex here is not meaningful, as in, it does not protected any shared data
     // The only reason it is here is use the wait_until function which follows
-    // Condition variable semantics. THe only meaningful parts is the stoptoken
+    // condition variable semantics. THe only meaningful parts is the stoptoken
     // and the time which wait until will use to stop waiting if the time is up
     // of the stop token received a stop request
     std::mutex mtx;

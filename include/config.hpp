@@ -15,6 +15,13 @@ struct Config
     std::string sml_fnt;
     std::string med_fnt;
     std::string lrg_fnt;
+
+    int cols;
+    int rows;
+    int padding;
+    int row_gap;
+    int img_span;
+    int img_h;
 };
 
 inline Config parse_cfg(std::string path)
@@ -45,12 +52,19 @@ inline Config parse_cfg(std::string path)
     config.host = get("network", "host", "127.0.0.1");
     config.port = get("network", "port", "30003");
 
-    config.lat = getReal("Location", "lat", 40.7); // NYC Default
-    config.lon = getReal("Location", "lon", -74.0);
+    config.lat = getReal("location", "lat", 40.7); // NYC Default
+    config.lon = getReal("location", "lon", -74.0);
 
     config.sml_fnt = get("font", "sml", "4x6");
     config.med_fnt = get("font", "med", "5x8");
     config.lrg_fnt = get("font", "lrg", "6x10");
+
+    config.rows = static_cast<int>(getReal("matrix", "rows", 32));
+    config.cols = static_cast<int>(getReal("matrix", "cols", 64));
+    config.padding = static_cast<int>(getReal("matrix", "padding", 2));
+    config.row_gap = static_cast<int>(getReal("matrix", "row_gap", 2));
+    config.img_span = static_cast<int>(getReal("matrix", "img_span", 2));
+    config.img_h = static_cast<int>(getReal("matrix", "img_height", 64));
 
     return config;
 }
