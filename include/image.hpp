@@ -1,11 +1,20 @@
-#include <optional>
+#pragma once
 
-#include "ui.hpp"
+#include <optional>
+#include <unordered_map>
+
 #include "canvas.hpp"
 #include "stb_image.h"
 #include "stb_image_resize2.h"
 
-std::optional<Image>
+struct Image
+{
+    int w = 0;
+    int h = 0;
+    std::vector<unsigned char> pixels;
+};
+
+inline std::optional<Image>
 load_image(const std::string &path, int target_h)
 {
     int w, h, channels;
@@ -14,7 +23,7 @@ load_image(const std::string &path, int target_h)
     if (!decoded)
         return std::nullopt;
 
-    int target_w = w * target_h / h; // Calculate new width
+    int target_w = w * target_h / h;
     Image img;
     img.w = target_w;
     img.h = target_h;
@@ -26,7 +35,7 @@ load_image(const std::string &path, int target_h)
     return img;
 }
 
-void draw_image(Canvas &c, int x, int y, const Image &img)
+inline void draw_image(Canvas &c, int x, int y, const Image &img)
 {
     for (size_t iy = 0; iy < img.h; ++iy)
     {

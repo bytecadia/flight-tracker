@@ -65,10 +65,3 @@ public:
     int tp() const { return y; }
     int btm() const { return y + h; }
 };
-
-struct Image
-{
-    int w = 0;
-    int h = 0;
-    std::vector<unsigned char> pixels;
-};

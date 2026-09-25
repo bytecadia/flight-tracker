@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ui.hpp"
+#include "image.hpp"
 #include "data.hpp"
 #include "geometry.hpp"
 

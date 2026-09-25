@@ -65,7 +65,7 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
     while (!st.stop_requested())
     {
         auto a = snap.read(); // TODO!: what did I mean by this -> (TODO: Make this blocking)
-                              // ^ Ahh I see it checks and return immediately if there
+                              // ^ Ahh I see it checks and returns immediately if there
                               // is no aircraft to read and will keep looping
                               //  if (st.stop_requested())
                               //      return;
@@ -79,7 +79,7 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
 
         canvas.Clear();
 
-        std::optional<Image> img = img_cache.get_image(std::format("./assets/{}", a.airline), cfg.img_h);
+        std::optional<Image> img = img_cache.get_image();
 
         if (img)
             draw_image(canvas, disp.content.lft(), disp.content.tp(), *logo);
