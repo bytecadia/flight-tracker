@@ -100,11 +100,11 @@ inline AircraftInfo lookup_aircraft(SQLite::Database &db, std::string icao)
 
         query.bind(1, icao);
 
-        // if (!query.executeStep())
-        // {
-        //     spdlog::info("No aircraft found for ICAO '{}'", icao);
-        //     return AircraftInfo{};
-        // }
+        if (!query.executeStep())
+        {
+            // spdlog::info("No aircraft found for ICAO '{}'", icao);
+            return AircraftInfo{};
+        }
 
         AircraftInfo info;
         info.mfc = query.getColumn(0).getString();
@@ -168,7 +168,7 @@ struct DisplayData
 {
     std::string header; // Airline or manufacturer - this is why database is needed
     std::string img_path;
-    std::string callsign;
+    std::string sub_header;
     int alt;
     int speed;
     int distance;
@@ -194,7 +194,11 @@ struct DisplayData
         else
             header = std::format("{} {}", info.mfc, info.mdl);
 
-        callsign = a.callsign;
+        sub_header = a.icao;
+
+        if (!a.callsign.empty())
+            sub_header = trim(a.callsign);
+
         alt = *a.alt;
         speed = *a.gs;
         distance = static_cast<int>(calc_dist(cfg.lat, cfg.lon, *a.lat, *a.lon));

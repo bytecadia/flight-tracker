@@ -90,6 +90,9 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
                               // is no aircraft to read and will keep looping
                               //  if (st.stop_requested())
                               //      return;
+                              // There needs to be a way to tell if update is necessary
+                              // so display data obect doesn't need to be written
+                              // every refresh
         // TODO: Create an idle screen?
 
         if (!a)
@@ -104,7 +107,7 @@ void render(std::stop_token st, Snapshot &snap, const Config &cfg, SQLite::Datab
         {                                                                                            // DBG
             dbg_last_icao = a->icao;                                                                 // DBG
             spdlog::debug("render: NEW aircraft {} hdr='{}' cs='{}' alt={} spd={} dist={} img='{}'", // DBG
-                          a->icao, data.header, data.callsign, data.alt,                             // DBG
+                          a->icao, data.header, data.sub_header, data.alt,                           // DBG
                           data.speed, data.distance, data.img_path);                                 // DBG
         } // DBG
 
